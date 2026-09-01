@@ -9,9 +9,12 @@ data/*.zip
 # Training outputs
 runs/
 
-# Model weights (>50 MB checkpoints don't belong in git; use a release/Drive link)
+# Model weights: ignored in general (runs/ churns them), EXCEPT the final
+# deliverables in models/ — yolo11n weights are ~5 MB, well inside git limits.
 *.pt
 *.onnx
+!models/*.pt
+!models/*.onnx
 
 # Python
 __pycache__/
