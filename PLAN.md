@@ -390,7 +390,7 @@ Required sections:
 
 ---
 
-## Phase 12 — Recording and final audit  `[ ]`
+## Phase 12 — Recording and final audit  `[~]`  _(audit done; recording + zip upload + repo sharing are the user's)_
 
 The only phase requiring me.
 
@@ -402,14 +402,14 @@ Record 6–8 minutes after the final push, so on-screen numbers match the README
 
 Claude Code then runs the final audit:
 
-- [ ] `git log --oneline` shows the real sequence including failed gates and fixes
-- [ ] No number in README lacks a producing command
-- [ ] Weights and ONNX committed, or linked with SHA256
-- [ ] `download_data.py` works from a clean clone and the checksum verifies
-- [ ] ANSWERS.md has all nine sections (B1–B3, C1–C3, D1–D5)
-- [ ] Assumptions and Known Gaps both non-empty and substantive
-- [ ] Recording link resolves
-- [ ] Repository public or shared with the sending address
+- [x] `git log --oneline` shows the real sequence including failed gates and fixes (47 commits: failed train launch 8f5f903, invalid int8 graph + mAP-0.000 collapse fff362e, pip CUDA clobber)
+- [x] No number in README lacks a producing command (audited; sole TODO is the recording link)
+- [x] Weights and ONNX committed: models/best.pt, best.onnx, best_int8.onnx
+- [~] `download_data.py`: zip built (756.6 MB, 301 entries, integrity-tested), SHA256 pinned; Drive URL + clean-clone verify pending the manual upload
+- [x] ANSWERS.md has all eleven sections (B1–B3, C1–C3, D1–D5)
+- [x] Assumptions (5) and Known Gaps (6, led by the quantified single-session lighting limitation) both substantive
+- [ ] Recording link resolves — USER: record after final push
+- [ ] Repository public or shared with the sending address — USER
 
 **Commit:** `docs: recording link and final audit`
 
