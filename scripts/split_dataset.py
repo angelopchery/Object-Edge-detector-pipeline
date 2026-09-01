@@ -66,6 +66,10 @@ def main() -> int:
                         help="JSON file listing scene IDs reserved as the held-out test set "
                              "(e.g. data/heldout_scenes.json). When given, exactly those scenes "
                              "become the test split and the rest are split train/val.")
+    parser.add_argument("--scene-map", type=Path, default=None,
+                        help="JSON from build_scene_map.py mapping scene IDs to image filenames, "
+                             "for datasets whose filenames do not encode the scene. Must have "
+                             '"reviewed": true.')
     args = parser.parse_args()
 
     if abs(args.train + args.val + args.test - 1.0) > 1e-6:
@@ -78,12 +82,39 @@ def main() -> int:
         print(f"ERROR: labels folder not found: {args.labels}", file=sys.stderr)
         return 1
 
-    # Group images by scene.
+    # Group images by scene: either from a reviewed scene map (camera-named
+    # files) or from the sceneNN filename convention.
+    name_to_scene: dict[str, str] = {}
+    if args.scene_map:
+        loaded = json.loads(args.scene_map.read_text())
+        if not loaded.get("reviewed", False):
+            print(f"ERROR: {args.scene_map} has \"reviewed\": false. Timestamp clustering is a "
+                  "draft — review the scene boundaries by eye, set reviewed to true, then rerun. "
+                  "An unreviewed map can silently leak near-duplicates across splits.",
+                  file=sys.stderr)
+            return 1
+        for sid, names in loaded["scenes"].items():
+            for n in names:
+                name_to_scene[n] = sid
+
     scenes: dict[str, list[Path]] = defaultdict(list)
+    unmapped: list[str] = []
     for img in sorted(args.images.iterdir()):
-        if img.suffix.lower() in IMAGE_EXTS:
+        if img.suffix.lower() not in IMAGE_EXTS:
+            continue
+        if args.scene_map:
+            sid = name_to_scene.get(img.name)
+            if sid is None:
+                unmapped.append(img.name)
+                continue
+            scenes[sid].append(img)
+        else:
             scenes[scene_id(img)].append(img)
 
+    if unmapped:
+        print(f"ERROR: {len(unmapped)} images missing from the scene map: {unmapped[:5]} ...",
+              file=sys.stderr)
+        return 1
     if not scenes:
         print(f"ERROR: no images found in {args.images}", file=sys.stderr)
         return 1
@@ -135,6 +166,7 @@ def main() -> int:
         "seed": args.seed,
         "fractions": {"train": args.train, "val": args.val, "test": args.test},
         "test_scenes_file": str(args.test_scenes) if args.test_scenes else None,
+        "scene_map_file": str(args.scene_map) if args.scene_map else None,
         "scenes": assignment,
         "images": {},
     }
