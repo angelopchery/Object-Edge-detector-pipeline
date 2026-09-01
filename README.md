@@ -337,6 +337,19 @@ honest uncertainty on accuracy is quantified by the val→test gap (−0.063
 mAP@0.5:0.95) and bounded below by the white-case failure mode, which any
 new environment will stress further.
 
+## Tooling & authorship
+
+AI tooling was used the way the brief anticipates ("we use them internally").
+Claude Code served as the execution agent for scaffolding, script writing,
+running the pipeline phases, and drafting documentation — visible in the
+commit trailers. The parts that cannot be delegated are mine: every
+photograph captured and all 208 boxes hand-labelled by me, the Part B
+diagnoses, every judgement call (annotation rules, class semantics, split
+policy, the no-second-capture trade-off, quantisation acceptance), and
+review of each phase's measured output before the next began — the staged
+plan with hard gates in [PLAN.md](PLAN.md) exists precisely so that
+execution speed never outran verification.
+
 ## Recording
 
 - Walkthrough video: TODO: add link (recorded after final push so on-screen

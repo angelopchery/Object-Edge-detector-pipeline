@@ -37,3 +37,7 @@ Thumbs.db
 .idea/
 data/*.resolved.yaml
 *.cache
+
+# Never publish: confidential assignment doc and local demo inputs
+Artikate_CV_ML_Engineer_Assignment.pdf
+Validation/
