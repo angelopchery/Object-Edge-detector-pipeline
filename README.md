@@ -254,6 +254,15 @@ python scripts/render_predictions.py --onnx models/best.onnx --split val --out r
 
 ## Assumptions
 
+- **150 images vs the brief's 60–100**: interpreted the volume spec as
+  applying to the training/validation pool (100 images) and deliberately
+  captured ~50 extra to hold out as an untouched test set evaluated exactly
+  once — trading spec-literalism for the val→test gap, which the brief's
+  own evaluation criteria reward ("results that are plausible", "correct
+  handling of splits").
+- **Privacy**: frames contain only objects, furniture, and closed/off
+  devices — no faces, plates, documents, or screens showing personal data
+  (reviewed by the annotator).
 - YOLO txt is the single source of truth for labels; the CSV/XML exports are
   provenance only and stale after resize.
 - Scene = "visual context" (background/lighting group from colour-histogram
