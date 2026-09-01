@@ -20,6 +20,8 @@ def main() -> int:
     parser.add_argument("--weights", type=Path, required=True, help="Trained model .pt")
     parser.add_argument("--imgsz", type=int, default=640, help="Export image size (default 640)")
     parser.add_argument("--opset", type=int, default=12, help="ONNX opset (default 12)")
+    parser.add_argument("--out", type=Path, default=None,
+                        help="Directory to copy the deliverables into as best.pt/best.onnx (e.g. models)")
     args = parser.parse_args()
 
     if not args.weights.is_file():
@@ -47,6 +49,13 @@ def main() -> int:
         print(f"  input:  {inp.name}  shape={shape_of(inp)}")
     for out in graph.output:
         print(f"  output: {out.name}  shape={shape_of(out)}")
+
+    if args.out:
+        import shutil
+        args.out.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(onnx_path, args.out / "best.onnx")
+        shutil.copy2(args.weights, args.out / "best.pt")
+        print(f"Copied deliverables to {args.out / 'best.onnx'} and {args.out / 'best.pt'}")
     return 0
 
 

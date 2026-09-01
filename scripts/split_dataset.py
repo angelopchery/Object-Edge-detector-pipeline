@@ -61,6 +61,10 @@ def main() -> int:
     parser.add_argument("--train", type=float, default=0.70, help="Train fraction of scenes (default 0.70)")
     parser.add_argument("--val", type=float, default=0.15, help="Val fraction of scenes (default 0.15)")
     parser.add_argument("--test", type=float, default=0.15, help="Test fraction of scenes (default 0.15)")
+    parser.add_argument("--test-scenes", type=Path, default=None,
+                        help="JSON file listing scene IDs reserved as the held-out test set "
+                             "(e.g. data/heldout_scenes.json). When given, exactly those scenes "
+                             "become the test split and the rest are split train/val.")
     args = parser.parse_args()
 
     if abs(args.train + args.val + args.test - 1.0) > 1e-6:
@@ -83,19 +87,40 @@ def main() -> int:
         print(f"ERROR: no images found in {args.images}", file=sys.stderr)
         return 1
 
+    # Optional pre-reserved held-out test scenes (PLAN stage 2): those scenes
+    # become the test split outright and are excluded from the shuffle.
+    forced_test: list[str] = []
+    if args.test_scenes:
+        loaded = json.loads(args.test_scenes.read_text())
+        forced_test = loaded["test_scenes"] if isinstance(loaded, dict) else loaded
+        unknown = sorted(set(forced_test) - set(scenes))
+        if unknown:
+            print(f"ERROR: held-out scenes not found among images: {unknown}", file=sys.stderr)
+            return 1
+
     # Shuffle SCENE IDs (not images) with a fixed seed, then cut by fractions.
-    scene_ids = sorted(scenes)
+    scene_ids = sorted(set(scenes) - set(forced_test))
     rng = random.Random(args.seed)
     rng.shuffle(scene_ids)
 
     n = len(scene_ids)
-    n_train = round(n * args.train)
-    n_val = round(n * args.val)
-    assignment = {
-        "train": sorted(scene_ids[:n_train]),
-        "val": sorted(scene_ids[n_train:n_train + n_val]),
-        "test": sorted(scene_ids[n_train + n_val:]),
-    }
+    if forced_test:
+        # Test is fixed by the manifest; split the remainder train/val
+        # by the train:val ratio.
+        n_train = round(n * args.train / (args.train + args.val))
+        assignment = {
+            "train": sorted(scene_ids[:n_train]),
+            "val": sorted(scene_ids[n_train:]),
+            "test": sorted(forced_test),
+        }
+    else:
+        n_train = round(n * args.train)
+        n_val = round(n * args.val)
+        assignment = {
+            "train": sorted(scene_ids[:n_train]),
+            "val": sorted(scene_ids[n_train:n_train + n_val]),
+            "test": sorted(scene_ids[n_train + n_val:]),
+        }
 
     # Hard guarantee: scene sets must be pairwise disjoint.
     train_s, val_s, test_s = (set(assignment[s]) for s in ("train", "val", "test"))
@@ -108,10 +133,12 @@ def main() -> int:
     manifest = {
         "seed": args.seed,
         "fractions": {"train": args.train, "val": args.val, "test": args.test},
+        "test_scenes_file": str(args.test_scenes) if args.test_scenes else None,
         "scenes": assignment,
         "images": {},
     }
-    print(f"{n} scenes, {sum(len(v) for v in scenes.values())} images, seed={args.seed}\n")
+    print(f"{len(scenes)} scenes, {sum(len(v) for v in scenes.values())} images, seed={args.seed}"
+          + (f" ({len(forced_test)} scenes pre-reserved for test)" if forced_test else "") + "\n")
 
     for split in ("train", "val", "test"):
         img_dir = args.out / "images" / split

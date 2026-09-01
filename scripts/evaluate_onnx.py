@@ -83,11 +83,21 @@ def average_precision(tp: np.ndarray, conf: np.ndarray, n_gt: int) -> tuple[floa
 def main() -> int:
     parser = argparse.ArgumentParser(description="P/R/mAP@0.5/mAP@0.5:0.95 for an ONNX model on a split.")
     parser.add_argument("--onnx", type=Path, required=True, help="ONNX model (FP32 or quantised)")
-    parser.add_argument("--images", type=Path, required=True, help="Split images folder")
-    parser.add_argument("--labels", type=Path, required=True, help="Split labels folder")
+    parser.add_argument("--split", choices=("train", "val", "test"),
+                        help="Shorthand: evaluate this split of --dataset")
+    parser.add_argument("--dataset", type=Path, default=Path("data/dataset"),
+                        help="Dataset root used with --split (default data/dataset)")
+    parser.add_argument("--images", type=Path, help="Explicit images folder (instead of --split)")
+    parser.add_argument("--labels", type=Path, help="Explicit labels folder (instead of --split)")
     parser.add_argument("--imgsz", type=int, default=640, help="Inference size (default 640)")
     parser.add_argument("--iou-nms", type=float, default=0.45, help="NMS IoU threshold (default 0.45)")
     args = parser.parse_args()
+
+    if args.split:
+        args.images = args.dataset / "images" / args.split
+        args.labels = args.dataset / "labels" / args.split
+    elif not (args.images and args.labels):
+        parser.error("provide either --split or both --images and --labels")
 
     images = list_images(args.images)
     if not images:
