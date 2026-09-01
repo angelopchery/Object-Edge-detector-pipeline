@@ -79,3 +79,14 @@ why. Raw material for the README's Assumptions section and the live round.
   becomes the lead Known Gaps item, quantified.
 - **Guide rules confirmed**: boxes exclude cable and shadow; no unlabelled
   background instances anywhere; the case never appears open.
+
+## 2026-09-01 — Phase 4 plausibility gate
+
+- Training: 87 epochs (early stop, best at 62), 11m 14s wall-clock, peak
+  ~1.4 GB VRAM. Best-val: P 0.899, R 0.968, mAP@0.5 0.988, mAP@0.5:0.95
+  0.755 (earphone_case 0.769, charger_brick 0.742).
+- mAP@0.5 exceeded the 0.97 tripwire → tighter leakage re-audit (threshold
+  12) flagged 3 pairs; visual inspection showed same-location,
+  different-object frames — allowed by a scene split, not leakage. Verdict:
+  metric is real, dataset is easy; README leads with mAP@0.5:0.95 and says
+  why mAP@0.5 is not the discriminator.

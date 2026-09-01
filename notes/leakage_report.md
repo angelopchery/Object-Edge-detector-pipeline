@@ -48,3 +48,19 @@ test vs train: min=0.102, pairs at/below cluster threshold 0.10: 0
 Verdict: clean under both metrics. The closest cross-split pairs sit just
 outside the same-scene band — consistent with "similar room, different
 arrangement", which is exactly what a scene-level split should allow.
+
+## Post-training re-audit (Phase 4 gate: mAP@0.5 = 0.988 > 0.97)
+
+Re-ran at the tighter threshold 12: 3 pairs flagged. Each was inspected
+side by side (they share one train image, IMG_20260901_145957494_HDR):
+
+- val IMG_20260901_150211624_MP / test IMG_20260901_150205078_HDR show the
+  WHITE EARPHONE CASE on the glass table; the train match shows the WHITE
+  CHARGER on the same table. Same location and background, different object
+  and arrangement.
+
+Verdict: same-room-different-scene, which a scene-level split legitimately
+allows — not near-duplicates. The high mAP@0.5 is therefore judged REAL but
+reflects an easy dataset: large boxes (median ~8% of frame), two visually
+distinctive rigid classes, a single capture location. mAP@0.5:0.95 (0.755
+on val) is the honest headline number.
