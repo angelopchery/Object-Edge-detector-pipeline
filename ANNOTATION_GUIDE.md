@@ -1,66 +1,78 @@
 # Annotation Guide
 
-> **Status: DRAFT.** These are placeholder rules — I will finalise each one
-> before annotating the first image, and every box in the dataset follows the
-> finalised version. If a rule changes mid-annotation, all earlier labels get
-> re-reviewed against the new rule.
+> **Provenance — read this first.** All 150 images were hand-labelled in
+> makesense.ai in a single pass *before* this guide was finalised (a failed
+> process gate, recorded in Known Gaps). This document is therefore written
+> **descriptively**: the rules below were inferred from the labels
+> themselves by `scratchpad/annotation_evidence.py`-style analysis, each
+> marked `[inferred]` with its evidence, and then confirmed or corrected by
+> the annotator. It describes observed practice, not intent.
 
-Classes:
+## Classes
 
-| ID | Name | Definition |
-|----|------|------------|
-| 0 | `charger_brick` | TODO: define exactly (wall adapter only? cable attached counts as part of the box or not?) |
-| 1 | `earphone_case` | TODO: define exactly (case only, or case with earphones visible inside?) |
+| ID | makesense name | Meaning |
+|----|----------------|---------|
+| 0 | `EarphoneCase` | earphone case |
+| 1 | `ChargingCase` | charger brick (wall adapter) — **pending visual confirmation, see notes/class_check/** |
 
-## Rules
+The ID→name mapping was **measured** by matching the YOLO txt export against
+the CSV export coordinate-by-coordinate (208/208 boxes agree). Do not trust
+the class names alone: "ChargingCase" is ambiguous between a charger brick
+and a charging case, which is why a cropped example of each class is kept in
+`notes/class_check/` and was confirmed by eye.
 
-### 1. Occlusion threshold
-**Placeholder:** label an object if at least ~20% of it is visible AND it is
-identifiable as its class from this frame alone. Box the *visible extent only*
-— do not guess the hidden extent (amodal boxes are not used).
-TODO: confirm threshold after looking at the actual occluded frames.
+## Rules, as practised
 
-### 2. Frame-edge crops
-**Placeholder:** label objects cut off by the frame edge if the visible part
-passes the occlusion rule above. The box goes to the image border, never
-beyond it (coordinates clamp to [0, 1]).
-TODO: decide a minimum visible fraction for edge cases (e.g. discard if <10% visible).
+### 1. Frame-edge crops — labelled, visible extent only `[inferred]`
+Evidence: 10 boxes touch a frame border (left/right/top), with areas 4–19%
+of frame — partially cut-off objects were boxed rather than skipped, and
+boxes stop at the border (all coordinates within [0,1], none clamped
+degenerate).
 
-### 3. Open earphone case: one box or two?
-**Placeholder:** an open case (lid + base connected by hinge) is **one box**
-covering both halves, because it is one physical object. If the two halves are
-physically separated in a frame, that frame goes to `notes/hard_images.md` and
-the rule gets decided there.
-TODO: confirm after checking whether any capture scene has a fully detached lid.
+### 2. Occlusion / adjacency — labelled through `[inferred]`
+Evidence: 8 images contain overlapping boxes (IoU up to 0.17), i.e. the two
+objects touching or partially occluding each other; both objects are always
+labelled in those frames. No frame shows an object skipped for being
+partially hidden.
 
-### 4. Minimum box size
-**Placeholder:** do not label instances smaller than ~12px on the shortest
-side at 1280px long edge (roughly matches `verify_labels.py`'s 0.1%-of-frame
-suspicion threshold). Smaller than that, the object is unlearnable at
-imgsz=640 anyway.
-TODO: confirm the pixel threshold against real distant instances.
+### 3. Exactly one instance of each class per frame `[inferred]`
+Evidence: 0 images contain two boxes of the same class, across all 150.
+Interpretation: **one physical charger brick and one physical earphone case
+were photographed throughout.** Consequence, stated honestly in the README:
+the model learns these two specific units; validation figures overstate
+generalisation to other units of the same classes.
 
-### 5. Out-of-focus background instances
-**Placeholder:** label a blurred background instance **only if** it is still
-identifiable as its class by a human who has not seen the other frames of the
-scene. If identification requires scene context, leave it unlabelled and log
-the image in `notes/hard_images.md`.
-TODO: revisit — leaving true instances unlabelled teaches the model they are
-background; if there are many, consider excluding those images entirely instead.
+### 4. Box tightness `[inferred, needs annotator confirmation]`
+Boxes appear tight to the object silhouette (aspect ratios track the
+objects' physical proportions: median w/h 1.39 for the case, 1.15 for the
+brick, varying with pose 0.6–2.5). Whether the charger's cable/prongs or
+cast shadows were included cannot be determined from coordinates alone —
+**annotator to confirm**: TODO.
 
-### 6. Box tightness
-Boxes are tight to the visible pixels of the object: no padding, no clipping.
-Cables/straps attached to an object: TODO decide (default: exclude cable from
-`charger_brick` box; include only the brick body and prongs).
+### 5. Minimum instance size — none needed `[inferred]`
+Evidence: smallest box is 1.69% of frame (~85×110 px at 1280 long edge).
+No tiny/distant instances exist, so no minimum-size rule was ever exercised.
+The 0.1%-of-frame suspicion threshold in `verify_labels.py` never fired.
 
-## Process discipline
+### 6. Out-of-focus / background instances — no evidence either way
+No labelled box is implausibly small or peripheral, and there is no record
+of skipped background instances. If any frame contains an unlabelled
+background instance, it is an unknown — **annotator to confirm whether any
+frames contained a second, unlabelled unit in the background**: TODO.
 
-- Tool: makesense.ai, YOLO txt export, class order `charger_brick=0, earphone_case=1`
-  (must match `data/data.yaml`).
-- ~40 images hand-labelled first → seed model → `prelabel.py` on the rest →
-  **every** pre-labelled box manually reviewed and corrected. No box enters the
-  dataset unreviewed.
-- After every annotation batch: run `python scripts/verify_labels.py` and fix
-  everything it reports before committing labels.
-- Ambiguous/hard frames are logged in `notes/hard_images.md` with the decision
-  taken, so the rules stay consistent.
+### 7. Open earphone case — one box or two?
+Not determinable from coordinates. **Annotator to confirm** whether any
+frames show the case open, and if so whether it was boxed as one object:
+TODO.
+
+## Process record
+
+- Tool: makesense.ai; exports: YOLO txt (authoritative), VOC XML and CSV
+  (provenance only — their absolute pixel coordinates go stale after the
+  1280px resize; YOLO txt normalised coordinates survive it).
+- Workflow: all 150 images hand-labelled in one session. No seed model, no
+  model-assisted pre-labelling was used (contrary to the original plan —
+  `prelabel.py` exists but was never part of this dataset's history).
+- Verification: `verify_labels.py` — 0 hard errors (no orphans, all
+  coordinates in [0,1], no degenerate boxes, class IDs only {0,1}).
+- Cross-format check: YOLO txt vs CSV vs VOC XML agree box-for-box (208).
