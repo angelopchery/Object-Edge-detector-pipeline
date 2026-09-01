@@ -22,7 +22,7 @@
 
 ---
 
-## 1. Environment  `[ ]`
+## 1. Environment  `[~]`  _(gitignore/models fix done in 52f13c7; venv rebuild + GPU gate pending)_
 
 The current venv is Python 3.14; onnxruntime and CUDA-enabled torch may not publish wheels for it. Rebuild before losing time to wheel errors.
 
@@ -60,7 +60,14 @@ Confirm the output count matches the input count and that EXIF rotation was appl
 
 **Reserve the held-out test set now, before any annotation or training.** From ~150 images, hold back ~50 as a test set touched exactly once at the very end. The remaining ~100 become train/val. This exceeds what the brief asks for and gives the strongest possible answer to "how confident are you these numbers hold on a different machine."
 
-Hold back **whole scenes**, not individual images.
+Hold back **whole scenes**, not individual images. Record them as JSON, e.g.:
+
+```json
+{"test_scenes": ["scene03", "scene07", "scene11", "..."]}
+```
+
+`split_dataset.py --test-scenes data/heldout_scenes.json` (stage 6) will force
+exactly these scenes into the test split and shuffle only the remainder.
 
 **Gate.** Test scene IDs are recorded in `data/heldout_scenes.json` and committed. Nothing downstream reads that folder until stage 12.
 
@@ -91,8 +98,12 @@ Finalise `ANNOTATION_GUIDE.md` before labelling anything. Replace the placeholde
 Hand-label ~40 images in makesense.ai spanning easy, cluttered, dark and far-away conditions. Export YOLO txt.
 
 ```bash
-python scripts/verify_labels.py --images data/dataset/images --labels data/dataset/labels
+# flat working folders during annotation: images in data/prepared, labels in data/labels_all
+python scripts/verify_labels.py --images data/prepared --labels data/labels_all
 ```
+
+(Only the annotated subset should be in the checked folders at this point —
+an unannotated image would correctly be reported as an orphan.)
 
 **Gate.** Zero orphans, zero out-of-range coordinates, zero invalid class IDs, no zero-area boxes. Review anything flagged as suspiciously small.
 
@@ -106,8 +117,13 @@ Record per-class instance counts from the script output into `notes/capture_log.
 
 ```bash
 python scripts/train.py --data data/data.yaml --epochs 50 --name seed
-python scripts/prelabel.py --weights runs/seed/weights/best.pt --images data/prepared/unlabelled --out data/prelabelled
+python scripts/prelabel.py --weights runs/detect/seed/weights/best.pt --source data/prepared_unlabelled
+# label txts land in runs/detect/prelabel/labels/, annotated previews alongside
 ```
+
+(Note: the seed model trains on the 40 seed images split scene-aware into a
+temporary train/val — do not train on all 40 with no val, and do not let seed
+val scenes come from the held-out test scenes.)
 
 Import images plus predicted labels into makesense.ai and **review every box**. Expect to correct roughly a third and delete some false positives. This review is not optional — it is the part of the workflow that makes model-assisted labelling legitimate rather than a shortcut, and it is what I will be asked about.
 
@@ -122,7 +138,9 @@ Re-run `verify_labels.py` on the full set.
 ## 6. Split  `[ ]`
 
 ```bash
-python scripts/split_dataset.py --images data/dataset/images --labels data/dataset/labels --seed 42
+python scripts/split_dataset.py --images data/prepared --labels data/labels_all \
+    --test-scenes data/heldout_scenes.json --seed 42
+python scripts/verify_labels.py --dataset data/dataset
 ```
 
 **Gate — all four must hold:**
@@ -164,8 +182,8 @@ Whatever happens here, write it down. A run that went wrong and was diagnosed is
 ## 8. ONNX export and parity  `[ ]`
 
 ```bash
-python scripts/export_onnx.py --weights runs/final/weights/best.pt --imgsz 640 --opset 12
-python scripts/verify_parity.py --pt runs/final/weights/best.pt --onnx models/best.onnx --images data/dataset/images/val --n 10
+python scripts/export_onnx.py --weights runs/detect/final/weights/best.pt --imgsz 640 --opset 12 --out models
+python scripts/verify_parity.py --weights runs/detect/final/weights/best.pt --onnx models/best.onnx --images data/dataset/images/val --num-images 10
 ```
 
 **Gate.** Max absolute difference on raw output tensors below `1e-3` across all ten images, and final post-NMS box coordinates agreeing within 1 px.
@@ -185,7 +203,7 @@ If parity fails: the usual causes are a preprocessing mismatch between the two p
 ```bash
 python scripts/evaluate_onnx.py --onnx models/best.onnx --split val
 # compare against Ultralytics' own val metrics on the identical split
-yolo val model=runs/final/weights/best.pt data=data/data.yaml split=val
+yolo val model=runs/detect/final/weights/best.pt data=data/data.yaml split=val
 ```
 
 **Gate.** The two mAP@0.5 figures agree within ~0.01. If they diverge materially, the custom implementation is the suspect, not the model — fix it before it contaminates every downstream comparison. Note in the README that this cross-check was performed and what the two numbers were; it is exactly the kind of verification the rubric rewards.
@@ -197,7 +215,8 @@ yolo val model=runs/final/weights/best.pt data=data/data.yaml split=val
 ## 10. Quantisation  `[ ]`
 
 ```bash
-python scripts/quantize.py --onnx models/best.onnx --calib-images data/dataset/images/train --n-calib 100 --mode int8
+python scripts/quantize.py --onnx models/best.onnx --calib-images data/dataset/images/train --num-calib 100
+# INT8 is the default mode; the FP16 fallback is: python scripts/quantize.py --onnx models/best.onnx --fp16
 ```
 
 Calibration draws **only** from the training split. The script already hard-refuses paths containing `val` or `test`; keep that guard and keep its comment.
@@ -213,7 +232,9 @@ Record all three file sizes in MB.
 ## 11. Benchmark  `[ ]`
 
 ```bash
-python scripts/benchmark.py --models models/best.onnx models/best_int8.onnx --warmup 20 --iters 200 --batch 1
+python scripts/benchmark.py --fp32 models/best.onnx --quant models/best_int8.onnx \
+    --image data/dataset/images/val/<any_val_image>.jpg --warmup 20 --iters 200
+# batch size is fixed at 1 inside the script (the export is fixed-batch-1 anyway)
 python scripts/evaluate_onnx.py --onnx models/best_int8.onnx --split val
 ```
 
