@@ -350,7 +350,4 @@ review of each phase's measured output before the next began — the staged
 plan with hard gates in [PLAN.md](PLAN.md) exists precisely so that
 execution speed never outran verification.
 
-## Recording
 
-- Walkthrough video: TODO: add link (recorded after final push so on-screen
-  numbers match this file).
