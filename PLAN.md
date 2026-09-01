@@ -50,13 +50,52 @@ python -c "import torch, onnxruntime as ort; print(torch.__version__, torch.cuda
 
 ---
 
-## 2. Image preparation  `[ ]`
+> **Reality check (2026-09-01, after data landed).** The dataset arrived
+> differently from what stages 2–5 assumed, and the plan below is amended
+> accordingly:
+> - All 150 images are already hand-labelled (makesense.ai; YOLO txt + VOC
+>   XML + CSV all agree, 208 boxes, `verify_labels.py` passes with 0 errors).
+>   The seed-model/pre-label loop (stages 4–5) never happened — the README
+>   must describe the actual workflow, not the planned one.
+> - Filenames are camera originals, not `sceneNN_x.jpg`. Scene identity now
+>   lives in `data/scene_map.json` (drafted from timestamp gaps by
+>   `build_scene_map.py`, must be human-reviewed before the split will
+>   accept it).
+> - Images are full-resolution (3072×4096 etc.), not yet resized. Resizing
+>   after labelling is safe for the YOLO txt labels because they are
+>   normalised; the CSV/XML exports carry absolute pixels and become
+>   stale after resize — they stay in the repo as annotation provenance
+>   only, and YOLO txt is the single source of truth downstream.
+> - The class IDs in the export were the reverse of the scaffolded
+>   `data.yaml` (measured: 0=EarphoneCase, 1=ChargingCase). Fixed in commit
+>   7324505 — this belongs in the README as a caught-defect story.
+> - Annotation happened before ANNOTATION_GUIDE.md was finalised — a failed
+>   stage-3 gate. Per rule 4 that is a finding to report: the guide gets
+>   written descriptively (the rules actually applied) and the deviation
+>   goes in Known Gaps.
+
+## 2. Image preparation  `[~]`  _(labelling done first; resize + scene review pending)_
 
 ```bash
-python scripts/resize_images.py --src data/raw --dst data/prepared --long-edge 1280
+python scripts/resize_images.py --src YoloData --dst data/prepared --long-edge 1280
 ```
 
 Confirm the output count matches the input count and that EXIF rotation was applied (portrait photos must not come out sideways — check three by eye).
+
+**EXIF/label-orientation gate (new).** makesense.ai labelled the images as the
+browser displayed them (EXIF applied). After the env rebuild, verify for a few
+portrait images that PIL's `exif_transpose` dimensions match the `image_width`/
+`image_height` recorded in YoloCSV.csv for that file. If they disagree, the
+normalised labels and the resized pixels are in different orientations — stop
+and resolve before anything trains.
+
+**Scene map review (new, replaces the sceneNN filename assumption).**
+`data/scene_map.json` is drafted (8 scenes from timestamp gaps). Three
+clusters are flagged as spanning multiple physical arrangements and must be
+split by hand by the person who took the photos: scene03 (15 images),
+scene05 (16), scene08 (87 — nearly 4 minutes of continuous shooting).
+Split them, set `"reviewed": true`, commit. `split_dataset.py` refuses an
+unreviewed map.
 
 **Reserve the held-out test set now, before any annotation or training.** From ~150 images, hold back ~50 as a test set touched exactly once at the very end. The remaining ~100 become train/val. This exceeds what the brief asks for and gives the strongest possible answer to "how confident are you these numbers hold on a different machine."
 
@@ -75,7 +114,7 @@ exactly these scenes into the test split and shuffle only the remainder.
 
 ---
 
-## 3. Annotation standard  `[ ]`
+## 3. Annotation standard  `[!]`  _(gate failed: labelling happened first — write the guide descriptively, record in Known Gaps)_
 
 Finalise `ANNOTATION_GUIDE.md` before labelling anything. Replace the placeholders with decisions. At minimum:
 
@@ -93,7 +132,7 @@ Finalise `ANNOTATION_GUIDE.md` before labelling anything. Replace the placeholde
 
 ---
 
-## 4. Seed annotation — 40 images  `[ ]`
+## 4. Seed annotation — 40 images  `[x]`  _(superseded: all 150 hand-labelled directly; verify_labels passed with 0 errors — commit f5230ab)_
 
 Hand-label ~40 images in makesense.ai spanning easy, cluttered, dark and far-away conditions. Export YOLO txt.
 
@@ -120,7 +159,7 @@ Record per-class instance counts from the script output into `notes/capture_log.
 
 ---
 
-## 5. Seed model and pre-labelling  `[ ]`
+## 5. Seed model and pre-labelling  `[x]`  _(superseded: no prelabel loop was used — README must say so; prelabel.py remains for future data)_
 
 ```bash
 python scripts/train.py --data data/data.yaml --epochs 50 --name seed
@@ -145,10 +184,12 @@ Re-run `verify_labels.py` on the full set.
 ## 6. Split  `[ ]`
 
 ```bash
-python scripts/split_dataset.py --images data/prepared --labels data/labels_all \
-    --test-scenes data/heldout_scenes.json --seed 42
+python scripts/split_dataset.py --images data/prepared --labels YoloLabels \
+    --scene-map data/scene_map.json --test-scenes data/heldout_scenes.json --seed 42
 python scripts/verify_labels.py --dataset data/dataset
 ```
+
+(Requires `data/scene_map.json` with `"reviewed": true` — stage 2.)
 
 **Gate — all four must hold:**
 1. The disjointness assertion on scene sets passes.
