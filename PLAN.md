@@ -60,7 +60,7 @@ Established by audit, not assumption. Carry these facts forward; do not re-deriv
 
 ---
 
-## Phase 0 — One-time decision batch  `[ ]`
+## Phase 0 — One-time decision batch  `[~]`  _(batch prepared, awaiting answers)_
 
 Everything I need to answer, asked once, up front. Claude Code prepares the material, I answer in a single message, and then autonomy runs to Phase 11.
 
@@ -80,7 +80,7 @@ Bundle all four into one message. Do not ask them serially.
 
 ---
 
-## Phase 1 — Environment  `[ ]`
+## Phase 1 — Environment  `[x]`  _(gate passed: torch 2.5.1+cu121 on RTX 3050; two env defects caught, see decisions.md)_
 
 Claude Code executes. The current venv is Python 3.14; CUDA torch and onnxruntime may not publish wheels for it.
 
@@ -110,7 +110,7 @@ Write the exact resolved versions of torch, ultralytics, onnx, onnxruntime, nump
 
 ---
 
-## Phase 2 — Data preparation and variation audit  `[ ]`
+## Phase 2 — Data preparation and variation audit  `[x]`  _(exif gate 150/150, resize 150/150, variation audited — brightness borderline-narrow)_
 
 ### 2a. EXIF orientation gate
 
@@ -162,7 +162,7 @@ Compute and report:
 
 ---
 
-## Phase 3 — Scene derivation, split, and leakage audit  `[ ]`
+## Phase 3 — Scene derivation, split, and leakage audit  `[~]`  _(3a done: colorhist, 40 clusters; 3b/3c after Phase 0 answers)_
 
 The most important phase. Filename-based scenes do not exist and timestamp clustering cannot separate an 87-image continuous burst. Derive scene identity visually, then verify the split empirically.
 
