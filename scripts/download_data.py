@@ -16,9 +16,11 @@ from pathlib import Path
 
 import gdown
 
-# TODO: fill in after uploading the final dataset zip to Google Drive.
+# data/artikate_dataset.zip (756.6 MB, ZIP_STORED): YoloData/ (150 originals),
+# YoloLabels/ (150 YOLO txt), YoloCSV.csv. Hash computed at build time.
+# TODO: fill DEFAULT_URL after uploading the zip to Google Drive.
 DEFAULT_URL = "TODO_GOOGLE_DRIVE_URL"
-DEFAULT_SHA256 = "TODO_SHA256_OF_ZIP"
+DEFAULT_SHA256 = "09bbd03e465ab918a9c8aacd54ea0552229feef78755b1c83e9e4862cd4d373b"
 
 
 def sha256_of(path: Path) -> str:
@@ -33,7 +35,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Download dataset zip from Google Drive, verify SHA256, extract to data/.")
     parser.add_argument("--url", default=DEFAULT_URL, help="Google Drive share/uc URL")
     parser.add_argument("--sha256", default=DEFAULT_SHA256, help="Expected SHA256 of the zip")
-    parser.add_argument("--out", type=Path, default=Path("data"), help="Extraction root (default data/)")
+    parser.add_argument("--out", type=Path, default=Path("."),
+                        help="Extraction root (default: repo root — the zip contains "
+                             "YoloData/, YoloLabels/, YoloCSV.csv at top level)")
     parser.add_argument("--keep-zip", action="store_true", help="Keep the downloaded zip after extraction")
     args = parser.parse_args()
 
@@ -43,7 +47,7 @@ def main() -> int:
         return 1
 
     args.out.mkdir(parents=True, exist_ok=True)
-    zip_path = args.out / "dataset.zip"
+    zip_path = args.out / "artikate_dataset.zip"
 
     print(f"Downloading to {zip_path} ...")
     result = gdown.download(url=args.url, output=str(zip_path), fuzzy=True)
