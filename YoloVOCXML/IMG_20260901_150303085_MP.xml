@@ -1,0 +1,25 @@
+<annotation>
+	<folder>my-project-name</folder>
+	<filename>IMG_20260901_150303085_MP.jpg</filename>
+	<path>/my-project-name/IMG_20260901_150303085_MP.jpg</path>
+	<source>
+		<database>Unspecified</database>
+	</source>
+	<size>
+		<width>2448</width>
+		<height>3264</height>
+		<depth>3</depth>
+	</size>
+	<object>
+		<name>ChargingCase</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>512</xmin>
+			<ymin>985</ymin>
+			<xmax>1540</xmax>
+			<ymax>1934</ymax>
+		</bndbox>
+	</object>
+</annotation>

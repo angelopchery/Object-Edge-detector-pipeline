@@ -1,0 +1,25 @@
+<annotation>
+	<folder>my-project-name</folder>
+	<filename>IMG_20260901_150200427_HDR.jpg</filename>
+	<path>/my-project-name/IMG_20260901_150200427_HDR.jpg</path>
+	<source>
+		<database>Unspecified</database>
+	</source>
+	<size>
+		<width>3072</width>
+		<height>4096</height>
+		<depth>3</depth>
+	</size>
+	<object>
+		<name>EarphoneCase</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>1272</xmin>
+			<ymin>1532</ymin>
+			<xmax>2455</xmax>
+			<ymax>2791</ymax>
+		</bndbox>
+	</object>
+</annotation>

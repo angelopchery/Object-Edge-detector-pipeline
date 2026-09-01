@@ -1,5 +1,6 @@
 # Original photos never leave this machine via git
 data/raw/
+YoloData/
 
 # Dataset images are distributed via download_data.py, not git.
 # Label files and the split manifest ARE committed (annotation is auditable work).

@@ -1,0 +1,37 @@
+<annotation>
+	<folder>my-project-name</folder>
+	<filename>IMG_20260901_145619608_HDR.jpg</filename>
+	<path>/my-project-name/IMG_20260901_145619608_HDR.jpg</path>
+	<source>
+		<database>Unspecified</database>
+	</source>
+	<size>
+		<width>3072</width>
+		<height>4096</height>
+		<depth>3</depth>
+	</size>
+	<object>
+		<name>ChargingCase</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>476</xmin>
+			<ymin>1153</ymin>
+			<xmax>1720</xmax>
+			<ymax>2731</ymax>
+		</bndbox>
+	</object>
+	<object>
+		<name>EarphoneCase</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>1659</xmin>
+			<ymin>1350</ymin>
+			<xmax>2668</xmax>
+			<ymax>2367</ymax>
+		</bndbox>
+	</object>
+</annotation>
