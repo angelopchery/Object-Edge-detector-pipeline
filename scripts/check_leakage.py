@@ -39,12 +39,11 @@ def hamming(a: np.ndarray, b: np.ndarray) -> int:
 
 
 def check_split_pair(eval_name: str, eval_dir: Path, train_hashes: dict[str, np.ndarray],
-                     threshold: int, top_n: int) -> int:
-    """Compare one eval split against train. Returns number of flagged pairs."""
-    eval_images = list_images(eval_dir)
+                     threshold: int, top_n: int) -> tuple[int, list[str]]:
+    """Compare one eval split against train. Returns (flagged count, report lines)."""
+    eval_images = list_images(eval_dir) if eval_dir.is_dir() else []
     if not eval_images:
-        print(f"=== {eval_name} vs train === skipped (no images in {eval_dir})\n")
-        return 0
+        return 0, [f"=== {eval_name} vs train === skipped (no images in {eval_dir})", ""]
 
     closest = []  # (distance, eval_name, train_name)
     for img in eval_images:
@@ -54,17 +53,17 @@ def check_split_pair(eval_name: str, eval_dir: Path, train_hashes: dict[str, np.
     closest.sort()
 
     flagged = [c for c in closest if c[0] <= threshold]
-    print(f"=== {eval_name} vs train === ({len(eval_images)} images)")
-    print(f"  closest {min(top_n, len(closest))} pairs (Hamming distance out of 64, lower = more similar):")
+    lines = [f"=== {eval_name} vs train === ({len(eval_images)} images)",
+             f"  closest {min(top_n, len(closest))} pairs (Hamming distance out of 64, lower = more similar):"]
     for dist, ev, tr in closest[:top_n]:
         marker = "  <-- LEAK?" if dist <= threshold else ""
-        print(f"    {dist:2d}  {ev}  ~  {tr}{marker}")
+        lines.append(f"    {dist:2d}  {ev}  ~  {tr}{marker}")
     if flagged:
-        print(f"  {len(flagged)} pair(s) at or below threshold {threshold} — inspect these side by side.")
+        lines.append(f"  {len(flagged)} pair(s) at or below threshold {threshold} — inspect these side by side.")
     else:
-        print(f"  no pair at or below threshold {threshold}.")
-    print()
-    return len(flagged)
+        lines.append(f"  no pair at or below threshold {threshold}.")
+    lines.append("")
+    return len(flagged), lines
 
 
 def main() -> int:
@@ -74,6 +73,8 @@ def main() -> int:
     parser.add_argument("--threshold", type=int, default=8,
                         help="Hamming distance at or below which a pair is flagged (default 8)")
     parser.add_argument("--top", type=int, default=10, help="Closest pairs to list per split (default 10)")
+    parser.add_argument("--report", type=Path, default=None,
+                        help="Also write the findings as markdown (e.g. notes/leakage_report.md)")
     args = parser.parse_args()
 
     train_dir = args.dataset / "images" / "train"
@@ -84,15 +85,26 @@ def main() -> int:
     train_hashes = {p.name: dhash(p) for p in train_images}
 
     flagged = 0
+    all_lines: list[str] = []
     for split in ("val", "test"):
-        flagged += check_split_pair(split, args.dataset / "images" / split,
+        n, lines = check_split_pair(split, args.dataset / "images" / split,
                                     train_hashes, args.threshold, args.top)
+        flagged += n
+        all_lines += lines
 
-    if flagged:
-        print(f"FLAGGED: {flagged} suspicious pair(s). Look at them before trusting any metric.")
-        return 1
-    print("OK: no near-duplicates found across splits at this threshold.")
-    return 0
+    verdict = (f"FLAGGED: {flagged} suspicious pair(s). Look at them before trusting any metric."
+               if flagged else "OK: no near-duplicates found across splits at this threshold.")
+    print("\n".join(all_lines))
+    print(verdict)
+
+    if args.report:
+        args.report.parent.mkdir(parents=True, exist_ok=True)
+        args.report.write_text("# Cross-split leakage audit\n\n"
+                               f"Produced by `scripts/check_leakage.py --threshold {args.threshold}` "
+                               f"(64-bit dHash, {len(train_hashes)} train images).\n\n```\n"
+                               + "\n".join(all_lines) + verdict + "\n```\n")
+        print(f"report written to {args.report}")
+    return 1 if flagged else 0
 
 
 if __name__ == "__main__":

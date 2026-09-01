@@ -51,6 +51,8 @@ def main() -> int:
     parser.add_argument("--dst", type=Path, required=True, help="Output folder (created if missing)")
     parser.add_argument("--long-edge", type=int, default=1280, help="Target long edge in px (default 1280)")
     parser.add_argument("--quality", type=int, default=95, help="JPEG quality (default 95)")
+    parser.add_argument("--apply-exif", action="store_true",
+                        help="EXIF orientation is ALWAYS baked in; flag kept for command compatibility")
     args = parser.parse_args()
 
     if not args.src.is_dir():

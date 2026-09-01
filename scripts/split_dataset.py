@@ -67,9 +67,16 @@ def main() -> int:
                              "(e.g. data/heldout_scenes.json). When given, exactly those scenes "
                              "become the test split and the rest are split train/val.")
     parser.add_argument("--scene-map", type=Path, default=None,
-                        help="JSON from build_scene_map.py mapping scene IDs to image filenames, "
-                             "for datasets whose filenames do not encode the scene. Must have "
-                             '"reviewed": true.')
+                        help="JSON mapping scene IDs to image filenames (from cluster_scenes.py "
+                             "or build_scene_map.py), for datasets whose filenames do not encode "
+                             "the scene. Accepted when marked reviewed:true or "
+                             "validated_by:leakage-audit.")
+    parser.add_argument("--test-frac", type=float, default=None,
+                        help="Greedy-balanced mode: fraction of images for test (e.g. 0.33). "
+                             "Overrides the scene-count --train/--val/--test fractions.")
+    parser.add_argument("--val-frac", type=float, default=0.2,
+                        help="Greedy-balanced mode: fraction of the NON-test images for val "
+                             "(default 0.2; only used with --test-frac)")
     args = parser.parse_args()
 
     if abs(args.train + args.val + args.test - 1.0) > 1e-6:
@@ -87,11 +94,12 @@ def main() -> int:
     name_to_scene: dict[str, str] = {}
     if args.scene_map:
         loaded = json.loads(args.scene_map.read_text())
-        if not loaded.get("reviewed", False):
-            print(f"ERROR: {args.scene_map} has \"reviewed\": false. Timestamp clustering is a "
-                  "draft — review the scene boundaries by eye, set reviewed to true, then rerun. "
-                  "An unreviewed map can silently leak near-duplicates across splits.",
-                  file=sys.stderr)
+        # Two acceptable provenances: a human-reviewed map, or a visual
+        # clustering whose split is gated by the leakage audit (Phase 3c).
+        if not (loaded.get("reviewed", False) or loaded.get("validated_by") == "leakage-audit"):
+            print(f"ERROR: {args.scene_map} is neither reviewed:true nor "
+                  "validated_by:leakage-audit. An unvetted map can silently leak "
+                  "near-duplicates across splits.", file=sys.stderr)
             return 1
         for sid, names in loaded["scenes"].items():
             for n in names:
@@ -136,7 +144,24 @@ def main() -> int:
     rng.shuffle(scene_ids)
 
     n = len(scene_ids)
-    if forced_test:
+    if args.test_frac is not None:
+        # Greedy-balanced mode (PLAN Phase 3b): assign whole scenes, largest
+        # first, to whichever of test/val still has the largest image deficit
+        # against its target; everything else goes to train. Shuffle first so
+        # equal-sized scenes break ties by seed, not by name.
+        total_images = sum(len(v) for v in scenes.values())
+        test_target = args.test_frac * total_images
+        val_target = args.val_frac * (total_images - test_target)
+        assign: dict[str, list[str]] = {"train": [], "val": [], "test": list(forced_test)}
+        counts = {"train": 0, "val": 0,
+                  "test": sum(len(scenes[s]) for s in forced_test)}
+        for sid in sorted(scene_ids, key=lambda s: (-len(scenes[s]), scene_ids.index(s))):
+            deficits = {"test": test_target - counts["test"], "val": val_target - counts["val"]}
+            split = max(deficits, key=deficits.get) if max(deficits.values()) > 0 else "train"
+            assign[split].append(sid)
+            counts[split] += len(scenes[sid])
+        assignment = {k: sorted(v) for k, v in assign.items()}
+    elif forced_test:
         # Test is fixed by the manifest; split the remainder train/val
         # by the train:val ratio.
         n_train = round(n * args.train / (args.train + args.val))
@@ -164,7 +189,10 @@ def main() -> int:
     # Copy files into the dataset layout and gather stats.
     manifest = {
         "seed": args.seed,
-        "fractions": {"train": args.train, "val": args.val, "test": args.test},
+        "mode": ("greedy-balanced" if args.test_frac is not None else "scene-count-fractions"),
+        "fractions": ({"test_frac": args.test_frac, "val_frac": args.val_frac}
+                      if args.test_frac is not None
+                      else {"train": args.train, "val": args.val, "test": args.test}),
         "test_scenes_file": str(args.test_scenes) if args.test_scenes else None,
         "scene_map_file": str(args.scene_map) if args.scene_map else None,
         "scenes": assignment,
