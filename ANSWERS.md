@@ -553,38 +553,277 @@ def test_nms_does_not_suppress_across_classes():
 
 **And at the system level**, the check that would have surfaced this without anyone suspecting NMS at all: log the count of detections **before and after** suppression, per frame, and alert on frames where the ratio is anomalous. In sparse frames the original code deletes boxes it should not, so the suppression ratio there is an outlier against an otherwise stable distribution. That signal costs nothing to emit and turns "operators occasionally report a missing box" from an anecdote into a queryable event.
 
-## Part C
+## Part C — Production failure diagnoses
 
-### C1
+### C1 — INT8 quantisation collapse: 0.91 → 0.58 mAP
 
-_TODO_
+The size of the drop matters diagnostically. Quantisation noise on a healthy
+model costs points, not thirds. A 0.33 mAP collapse means something is
+*structurally* wrong — a whole code path, layer group, or data distribution is
+broken, not just rounding error. That rules out "INT8 is just like that" as an
+explanation before we start.
 
-### C2
+**Order of investigation, cheapest and most-often-guilty first.**
 
-_TODO_
+**Check 0 — is it even the quantisation?** Run the FP32 model through the
+*deployment* runtime (TensorRT FP32 engine, same preprocessing code) on the
+same eval set. If FP32-through-TensorRT also scores ~0.58, quantisation is
+innocent and this is a preprocessing/pipeline divergence between the training
+framework and the deployment stack — wrong normalisation, BGR/RGB swap,
+different letterbox pad or resize interpolation. This is the most common
+"quantisation bug" in practice and it is not a quantisation bug at all.
+Distinguishing test: FP32 deployment-path evaluation. Costs one engine build.
+(This repo's `verify_parity.py` exists precisely to catch this class before it
+ships: same tensor through both runtimes, max abs diff on raw outputs, then
+post-NMS box agreement in pixels.)
 
-### C3
+**Cause 1 — unrepresentative calibration set.** Static INT8 chooses activation
+ranges from calibration images. If they were dev-box screenshots, a handful of
+easy frames, or images from a different site/camera than deployment,
+activation clipping destroys exactly the feature ranges real data needs.
+Distinguishing test: recalibrate with 100+ images sampled from the actual
+deployment distribution and re-evaluate — a large recovery convicts
+calibration. Corroborating evidence: per-image score degradation concentrates
+in conditions (lighting, scale) absent from the calibration set.
+(In this repository calibration draws only from the training split and
+`quantize.py` refuses val/test paths — using eval images for calibration is a
+leak that flatters the INT8 number.)
 
-_TODO_
+**Cause 2 — per-tensor weight quantisation on a depthwise-separable
+backbone.** Depthwise conv layers have wildly different per-channel weight
+ranges; one 8-bit scale per tensor crushes the small-range channels to zero.
+Distinguishing test: rebuild with per-channel weight quantisation (both ORT
+and TensorRT support it) and compare — recovery convicts the scheme, not the
+data. Corroborating evidence: dump per-layer weight ranges; a layer whose
+max/min channel-range ratio is in the hundreds is the smoking gun.
 
-## Part D
+**Cause 3 — the detection head does not survive INT8.** Box-regression
+outputs (especially DFL-style distributions) and objectness logits have value
+ranges and sensitivities that 8 bits represent poorly. Distinguishing test:
+exclude the head (final conv layers) from quantisation, keep the backbone
+INT8, re-evaluate. Recovery with negligible latency cost convicts the head.
+This is also the fix with the best accuracy-per-millisecond trade-off.
 
-### D1
+**Cause 4 — silent layer fallback / botched fusion.** TensorRT falls back
+unsupported ops to FP32 and fuses layers around Q/DQ nodes; a badly placed
+Q/DQ pair can leave a subgraph quantised in a numerically hostile spot.
+Distinguishing test: inspect the engine build log / layer-precision report —
+which layers actually run INT8 — and compare intermediate activations
+layer-by-layer between FP32 and INT8 on one image; the first layer where
+cosine similarity craters localises the defect.
 
-_TODO_
+**Validation before it reaches the client:** evaluate FP32 and INT8 with the
+*same* evaluation code on the same frozen split (in this repo:
+`evaluate_onnx.py` for both, cross-checked against Ultralytics in Phase 6),
+report the drop as a number alongside latency and size, and gate the release
+on a maximum acceptable drop agreed in advance.
 
-### D2
+*Grounding from this repository:* the measurement on my own model —
+static INT8 (QDQ, per-channel, MinMax, train-split calibration) — is recorded
+in the README trade-off table; per-channel weight quantisation was the default
+precisely because of Cause 2, and the measured drop is quoted there rather
+than re-typed here so the two can never disagree.
 
-_TODO_
+### C2 — One camera of twelve, consistent directional offset, worse at edges
 
-### D3
+**What the pattern alone localises.** Twelve cameras share one model. A model
+defect would degrade all twelve; eleven are fine, so the model is innocent. A
+loose mount or random noise would not produce a *consistent direction*; a
+constant directional shift is a translation error. "Worse at the frame edges"
+is the signature of a multiplicative (scale) error, which is ~zero at the
+coordinate origin and grows linearly toward the far corner. Both signatures at
+once — uniform offset plus edge-growing error — is precisely the letterbox
+inverse-mapping defect: pad not subtracted (translation) and nominal-vs-actual
+scale mismatch (edge-growing drift). This is the same defect class as
+Snippet 1 (Part B1), where the arithmetic is worked in detail: the per-stream
+coordinate transform for that camera is wrong, almost certainly because that
+camera's resolution or aspect ratio differs from the other eleven and its
+letterbox parameters are stale, hardcoded, or computed from the wrong
+dimensions.
 
-_TODO_
+**Confirming without physical access, in order:**
+1. Pull the stream metadata: compare that camera's advertised resolution and
+   aspect ratio against the other eleven. A lone 4:3 camera in a 16:9 fleet,
+   or a substream at a different resolution, closes the case at step one.
+2. Grab one frame plus one detection from the live pipeline, and run the same
+   frame through the reference implementation offline. The difference between
+   the two box sets *is* the transform error; a constant delta measures the
+   pad term, and a delta growing with distance from the origin measures the
+   scale term.
+3. Round-trip test with no model at all (the B1.4 test): forward-map synthetic
+   corner boxes through that stream's preprocess parameters and invert them.
+   Drift over 1 px reproduces the bug deterministically.
+4. Project a known fixed point (doorframe corner, floor marking visible in the
+   frame) through the pipeline and compare its reported position across
+   cameras.
 
-### D4
+**Fix and validation.** Compute letterbox scale and pad per-stream from the
+actual decoded frame dimensions (never from config constants), return the
+*applied* scale (post-rounding) rather than the nominal ratio, and add the
+parameterised round-trip test over every resolution in the fleet to CI so the
+next odd camera cannot ship. Validate by re-projecting the fixed reference
+point on all twelve streams and confirming sub-pixel agreement.
 
-_TODO_
+### C3 — 97% → 84% over three months, "nothing changed"
 
-### D5
+"Nothing changed" means "nothing anyone chose to change" — three months of
+gradual decay is the signature of the environment changing under a frozen
+model. Three causes cover most real cases; each has cheap confirming evidence
+in the logs and images the system already produces.
 
-_TODO_
+**Cause 1 — illumination drift.** Seasonal daylight shift, aging or failed
+luminaires, a relamped hall. Confirming evidence: per-camera mean frame
+brightness and histogram, trended over the three months — a monotonic drift or
+a step at a specific date convicts lighting. (This dataset's own variation
+audit measured brightness mean 126, std 21.8, range 83–170 — a model trained
+on one lighting regime, as mine was, is maximally exposed to exactly this
+failure.)
+
+**Cause 2 — camera physical degradation.** Dust or film on the lens, focus
+creep, mount drift changing the viewing angle. Confirming evidence: image
+sharpness (variance of Laplacian) trended per camera; projection of a fixed
+scene landmark over time; degradation isolated to specific cameras rather
+than uniform across the fleet.
+
+**Cause 3 — input distribution change.** New product variant, changed
+packaging, new pallet/backdrop, workers placing items differently. Confirming
+evidence: rising fraction of low-confidence detections, per-class recall
+falling asymmetrically, and human review of a sample of recent misses — if the
+missed objects are visibly "new" (my own dataset contains a black charger and
+a white charger; a model trained only on the white one would exhibit exactly
+this on the black), the case is closed.
+
+**The monitoring signal that would have fired inside two weeks.** Accuracy
+cannot be monitored directly without labels, but its proxies can:
+
+- Log per-frame **mean detection confidence** and **detections-per-frame**,
+  aggregated per camera per day.
+- Commission baseline: first 30 days of deployment give a mean and sigma per
+  camera (e.g. confidence 0.82, sigma 0.015 at daily aggregation).
+- **Alert rule: 7-day rolling mean confidence more than 2 sigma below the
+  commissioning baseline, per camera** — with a 13-point accuracy decay over
+  ~12 weeks (≈1.1 points/week) and confidence tracking accuracy, the rolling
+  mean crosses a 2-sigma band (~0.03) inside two weeks of the decay starting,
+  while day-to-day noise stays inside it.
+- Secondary rule for the physical causes: per-camera mean brightness or
+  sharpness ±20% from commissioning baseline for 3 consecutive days.
+
+Both rules are one SQL query over logs the system should already be writing;
+neither needs a single labelled frame.
+
+## Part D — Edge deployment: 8 cameras, 200 ms, air-gapped
+
+### D1 — Throughput vs latency: the two budgets
+
+Aggregate throughput: **8 cameras × 15 fps = 120 frames/second, sustained.**
+
+These are two different constraints and they fail differently:
+
+- **Throughput budget:** the box must *complete* at least 120 inferences per
+  second indefinitely. If one inference occupies the accelerator for t ms,
+  serial execution needs t ≤ 1000/120 = **8.3 ms**; with batching or multiple
+  execution streams, the requirement is that *amortised* per-frame occupancy
+  stays under 8.3 ms.
+- **Latency budget:** each individual frame must go decode → preprocess →
+  inference → postprocess → action in ≤ **200 ms** end-to-end. Inference is
+  only one term; at 15 fps a frame can also wait up to 66.7 ms for its slot in
+  a batch, and decode/NMS/serialisation all bill against the same 200 ms.
+
+Batching illustrates why conflating them is the standard error: batch-8
+inference at, say, 40 ms per batch gives amortised 5 ms/frame — throughput
+passes comfortably — but a frame arriving just after a batch closes waits up
+to 66.7 ms (one frame interval) before its batch even starts, then 40 ms of
+compute: batching *helps throughput and hurts per-frame latency*. With a
+200 ms budget there is room for moderate batching, but the sum
+(wait + decode + preprocess + inference + postprocess + action) must be
+measured as a distribution — p95/p99, not mean — because the budget is
+per-frame, not on average.
+
+### D2 — Model, precision, and the first measurement
+
+Choice: a **nano/small single-stage detector (YOLO11n/s class) at INT8** on
+the edge accelerator, with the detection head kept at higher precision if the
+INT8 accuracy drop measured on-device exceeds the agreed budget (see C1
+Cause 3), and FP16 as the documented fallback.
+
+Why the combination fits: a fixed camera, a small closed set of rigid object
+classes, and large-ish objects is exactly the regime where detector capacity
+stops mattering and the nano tier is sufficient — my own 5.4 MB YOLO11n on
+two classes supports this. INT8 quarters memory bandwidth and roughly doubles
+throughput on edge accelerators versus FP16, which is what makes 120 fps
+sustained plausible on a single low-power device.
+
+The single first measurement: **sustained end-to-end p95 latency and
+throughput of the actual INT8 engine on the actual target device, under
+thermal steady-state (30+ minutes), at the batch size the pipeline will
+really use** — not a datasheet TOPS figure, not a desktop benchmark. My
+benchmark methodology in this repo (20 warmup + 200 timed iterations, p95 and
+std reported, execution provider and thread count logged) is the template; on
+a laptop I additionally noted that thermal throttling makes short benchmarks
+unreproducible, and an edge box in a warm factory corner is worse. I would
+benchmark before committing to any specific device count rather than assert
+one here.
+
+### D3 — Air-gapped retraining loop
+
+1. **Flag at the line.** The operator UI has one control: "this was wrong"
+   (missed object / wrong box / false alarm). The system stores the frame,
+   the model's raw predictions, model version, camera ID and timestamp in a
+   local ring buffer. Low-confidence detections are auto-queued for review as
+   well — operators only catch what they notice.
+2. **Cross the gap physically.** On a schedule (weekly, or when the buffer
+   fills), flagged bundles are exported to removable media — hashed and
+   signed so the lab can verify integrity — and walked across the gap.
+   Nothing else crosses.
+3. **In the lab:** review every flagged frame against the annotation guide
+   (the same discipline as this repo: written rules, rendered-box review,
+   verify_labels-style gates), add to the training corpus with scene/site
+   metadata, retrain, and evaluate on (a) a frozen held-out test set that
+   never trains and (b) a regression suite built from previously-fixed
+   failures, so old fixes cannot silently regress.
+4. **Return crossing:** the candidate model ships back as a signed package
+   (weights + config + expected-output vectors for N canonical frames). The
+   edge box verifies the signature and runs the canonical frames, refusing a
+   package whose outputs do not match — a parity check in the same spirit as
+   verify_parity.py.
+5. **Staged replacement:** the candidate runs in shadow mode alongside the
+   incumbent for a fixed soak period (disagreement rate logged), then swaps
+   in only if shadow metrics clear the bar. The incumbent is retained for
+   rollback (D4).
+
+### D4 — Rollback
+
+- **Mechanism:** the previous model version stays on disk; the runtime loads
+  models via an atomic pointer (symlink/config swap) so rollback is a restart
+  of the inference process, not a redeployment — seconds, executable by a
+  site technician or automatically.
+- **Trigger signal:** the C3 monitors, tightened for the post-deploy window —
+  per-camera 24-hour rolling mean detection confidence or detections-per-frame
+  outside ±2 sigma of the pre-swap baseline, or the shadow-period disagreement
+  rate jumping after the swap. Plus a manual trigger for operators.
+- **Detection latency:** with 120 fps there is no shortage of samples — at
+  hourly aggregation, a C1-style collapse (tens of points) is detectable
+  within 1–2 hours of the swap; a slow C3-style drift within days. The swap
+  is scheduled at shift start so the first monitored window has production
+  traffic.
+- **Drill:** rollback that has never been exercised does not exist; it is
+  rehearsed at every model update by design (the swap procedure and the
+  rollback procedure are the same code path in opposite directions).
+
+### D5 — What I am least confident about, honestly
+
+**The quantised model's behaviour on the target accelerator's toolchain.**
+Everything in this repository quantised with ONNX Runtime on x86; a real
+edge deployment (TensorRT on Jetson, or an NPU vendor toolchain) requantises
+with a different calibrator, different kernel fusions and different
+per-layer precision decisions. My ORT INT8 numbers bound nothing about a
+TensorRT INT8 engine — C1 is a whole answer about the ways that specific
+translation fails. Second: **sustained thermal behaviour** — my latency
+figures came from a laptop that I explicitly could not hold in thermal
+steady-state, and I flagged them as such in the README.
+
+What resolves both is the same thing: the target device on a desk, the real
+engine built by the real toolchain, the frozen test set evaluated on-device,
+and a 30-minute sustained-load benchmark — before any commitment about
+device count or frame budget is made to the client. I would rather deliver
+that measurement plan than a confident number I do not have.
