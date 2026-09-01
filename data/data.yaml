@@ -1,0 +1,10 @@
+# Ultralytics dataset config.
+# Paths are relative to this file's directory.
+path: dataset
+train: images/train
+val: images/val
+test: images/test
+
+names:
+  0: charger_brick
+  1: earphone_case

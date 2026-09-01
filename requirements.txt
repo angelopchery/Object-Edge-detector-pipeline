@@ -1,0 +1,18 @@
+# Core training / export
+# NOTE: install torch with CUDA support FIRST, matching your driver, e.g.:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+# then: pip install -r requirements.txt
+ultralytics>=8.3.0
+
+# ONNX export / inference / quantization
+onnx>=1.16.0
+onnxruntime>=1.18.0
+onnxslim>=0.1.31          # used by ultralytics for simplify=True
+onnxconverter-common>=1.14.0  # FP16 conversion fallback in quantize.py
+
+# Utilities
+opencv-python>=4.9.0
+numpy>=1.26.0
+Pillow>=10.0.0
+tqdm>=4.66.0
+gdown>=5.1.0              # Google Drive download in download_data.py
