@@ -24,3 +24,11 @@ asked. Keep current as scripts change.
 | `render_predictions.py` | Predictions vs GT overlays, errNN_ filename prefix sorts worst first | "How were hard images picked?" — post-hoc by measured error, stated plainly |
 | `download_data.py` | Drive fetch + pinned SHA256, refuses on mismatch | "Why the hash?" — reproducers must provably evaluate the same images |
 | `build_scene_map.py` | (superseded by cluster_scenes.py) timestamp-gap draft clustering | "Why superseded?" — couldn't split the 87-image continuous burst |
+
+Added during autonomous execution (PLAN v2):
+
+| Script | What it does | The question you'll get |
+|---|---|---|
+| `check_exif_orientation.py` | EXIF-applied dims vs CSV labelling dims, per image | "Did it matter?" — yes: 147/150 images carry EXIF rotation |
+| `cluster_scenes.py` | Visual scene clustering; colorhist default after pHash failed by measurement | "Why colorhist?" — adjacent 0.236 vs distant 0.916 median distance; pHash showed no separation (29.4 vs 31.5) |
+| `audit_variation.py` | Brightness/background/box-area variation report | "What did it find?" — one lighting regime (std 21.8), 10 backgrounds, 20.1x area span |
