@@ -37,3 +37,31 @@ why. Raw material for the README's Assumptions section and the live round.
   which on ~20-40 unevenly sized clusters can produce badly skewed split
   sizes. Class balance is checked after the fact and reported, never fixed
   by resampling (PLAN Phase 3 rule).
+
+## 2026-09-01 — Scene clustering method (measured)
+
+- **pHash rejected by measurement**: temporally adjacent frames (same
+  arrangement, <=5s apart) averaged Hamming 29.4/64 vs 31.5 for frames
+  >60s apart — no separation, because handheld close-up reframing changes
+  global image structure between consecutive shots. Auto-threshold on the
+  pHash scan produced a degenerate 113-image chained cluster.
+- **HSV colour-histogram correlation adopted**: adjacent median distance
+  0.236 vs distant 0.916 — clean separation. Auto knee chose 0.10 → 40
+  clusters (sizes 59/25/16/10/3/2/2 + 33 singletons).
+- The large clusters span the whole session: they are recurring
+  **backgrounds**, not time blocks — consistent with the variation audit's
+  10 background groups. Splitting on background-level visual context is the
+  conservative choice for leakage.
+- **Split greedy amended**: a cluster is assigned to test/val only if it
+  fits the remaining deficit (+10% slack), else train — prevents the
+  59-image cluster swallowing the test split and starving training.
+
+## 2026-09-01 — Environment (continued)
+
+- **pip clobbered CUDA torch**: `pip install -r requirements.txt` replaced
+  torch 2.5.1+cu121 with 2.13.0+cpu (CUDA False). Caught by re-running the
+  GPU gate after the install, per the Phase 1 decision table; fixed with
+  `pip install torch==2.5.1+cu121 torchvision==0.20.1+cu121 --index-url
+  https://download.pytorch.org/whl/cu121 --force-reinstall --no-deps`.
+  Lesson recorded: on this stack, verify `torch.cuda.is_available()` after
+  ANY pip operation.

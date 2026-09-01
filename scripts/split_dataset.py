@@ -147,8 +147,10 @@ def main() -> int:
     if args.test_frac is not None:
         # Greedy-balanced mode (PLAN Phase 3b): assign whole scenes, largest
         # first, to whichever of test/val still has the largest image deficit
-        # against its target; everything else goes to train. Shuffle first so
-        # equal-sized scenes break ties by seed, not by name.
+        # — but only if the scene FITS that deficit (plus 10% slack), so one
+        # oversized cluster cannot swallow a split and starve training.
+        # Anything that fits nowhere goes to train (the residual sink).
+        # Shuffle first so equal-sized scenes break ties by seed, not name.
         total_images = sum(len(v) for v in scenes.values())
         test_target = args.test_frac * total_images
         val_target = args.val_frac * (total_images - test_target)
@@ -156,10 +158,12 @@ def main() -> int:
         counts = {"train": 0, "val": 0,
                   "test": sum(len(scenes[s]) for s in forced_test)}
         for sid in sorted(scene_ids, key=lambda s: (-len(scenes[s]), scene_ids.index(s))):
+            size = len(scenes[sid])
             deficits = {"test": test_target - counts["test"], "val": val_target - counts["val"]}
-            split = max(deficits, key=deficits.get) if max(deficits.values()) > 0 else "train"
+            fitting = [s for s, d in deficits.items() if d > 0 and size <= d + 0.10 * (test_target if s == "test" else val_target)]
+            split = max(fitting, key=lambda s: deficits[s]) if fitting else "train"
             assign[split].append(sid)
-            counts[split] += len(scenes[sid])
+            counts[split] += size
         assignment = {k: sorted(v) for k, v in assign.items()}
     elif forced_test:
         # Test is fixed by the manifest; split the remainder train/val

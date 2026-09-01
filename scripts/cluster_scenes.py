@@ -1,15 +1,21 @@
 """Derive scene identity by visual similarity (PLAN Phase 3a).
 
 Filenames carry no scene IDs and timestamp clustering cannot separate an
-87-image continuous burst, so scene identity is derived from image content:
+87-image continuous burst, so scene identity is derived from image content.
 
-  1. a 64-bit perceptual hash (pHash: DCT of a 32x32 grayscale, sign of the
-     top-left 8x8 low-frequency block vs its median) per image
+Method selection was MEASURED, not assumed (see notes/decisions.md):
+64-bit whole-image pHash gave no separation on this dataset (temporally
+adjacent frames: mean Hamming 29.4 vs 31.5 for frames >60s apart) because
+handheld close-up reframing changes global structure between consecutive
+shots. Coarse HSV colour-histogram correlation separates cleanly
+(adjacent median distance 0.236 vs distant 0.916), so 'colorhist' is the
+default; 'phash' is kept selectable for comparison.
+
+  1. per-image feature: 8x4x4 HSV histogram (colorhist) or 64-bit pHash
   2. single-linkage agglomerative clustering (union-find) on pairwise
-     Hamming distance: two images join the same scene if their distance is
-     at or below the threshold
+     distance: images join a scene if distance <= threshold
   3. capture timestamps as a weak prior: pairs shot within --time-slack
-     seconds of each other join at a slightly looser distance (+prior bonus)
+     seconds join at a slightly looser threshold (+prior bonus)
 
 The threshold is chosen by scanning a range and taking the knee of the
 cluster-count curve (max second difference); the whole scan is written to
@@ -20,7 +26,7 @@ The leakage audit (check_leakage.py, Phase 3c) is the actual gate on the
 split — this clustering is the means, not the guarantee.
 
 Usage:
-    python scripts/cluster_scenes.py --images data/prepared --out data/scene_map.json --method phash --threshold auto
+    python scripts/cluster_scenes.py --images data/prepared --out data/scene_map.json --method colorhist --threshold auto
 """
 
 import argparse
@@ -47,6 +53,28 @@ def phash(path: Path) -> np.ndarray:
     return (low > np.median(low))
 
 
+def colorhist(path: Path) -> np.ndarray:
+    img = cv2.imread(str(path))
+    if img is None:
+        raise FileNotFoundError(path)
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    hist = cv2.calcHist([hsv], [0, 1, 2], None, [8, 4, 4], [0, 180, 0, 256, 0, 256])
+    return cv2.normalize(hist, None).flatten().astype(np.float32)
+
+
+def pairwise_distance(features: list[np.ndarray], method: str) -> np.ndarray:
+    n = len(features)
+    dist = np.zeros((n, n), dtype=np.float32)
+    for i in range(n):
+        for j in range(i + 1, n):
+            if method == "phash":
+                d = float(np.count_nonzero(features[i] != features[j]))
+            else:  # colorhist: 1 - correlation, in [0, 2]
+                d = 1.0 - cv2.compareHist(features[i], features[j], cv2.HISTCMP_CORREL)
+            dist[i, j] = dist[j, i] = d
+    return dist
+
+
 def timestamp_s(name: str) -> float | None:
     m = TS_RE.match(name)
     if m is None:
@@ -69,8 +97,8 @@ class UnionFind:
         self.parent[self.find(a)] = self.find(b)
 
 
-def cluster(dist: np.ndarray, times: list[float | None], thr: int,
-            time_slack: float, prior_bonus: int) -> list[int]:
+def cluster(dist: np.ndarray, times: list[float | None], thr: float,
+            time_slack: float, prior_bonus: float) -> list[int]:
     n = len(dist)
     uf = UnionFind(n)
     for i in range(n):
@@ -89,13 +117,17 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Visual scene clustering via perceptual hash.")
     parser.add_argument("--images", type=Path, required=True, help="Images folder")
     parser.add_argument("--out", type=Path, default=Path("data/scene_map.json"), help="Scene map output")
-    parser.add_argument("--method", choices=("phash",), default="phash", help="Similarity method")
+    parser.add_argument("--method", choices=("colorhist", "phash"), default="colorhist",
+                        help="Similarity method (default colorhist — measured to separate; "
+                             "phash does not on this dataset)")
     parser.add_argument("--threshold", default="auto",
-                        help="Hamming threshold 0-63, or 'auto' for the knee of the scan (default)")
+                        help="Distance threshold (Hamming 0-63 for phash, 1-corr 0-2 for "
+                             "colorhist), or 'auto' for the knee of the scan (default)")
     parser.add_argument("--time-slack", type=float, default=5.0,
                         help="Seconds within which the timestamp prior applies (default 5)")
-    parser.add_argument("--prior-bonus", type=int, default=3,
-                        help="Extra Hamming tolerance for temporally adjacent shots (default 3)")
+    parser.add_argument("--prior-bonus", type=float, default=None,
+                        help="Extra distance tolerance for temporally adjacent shots "
+                             "(default: 3 for phash, 0.05 for colorhist)")
     parser.add_argument("--scan-report", type=Path, default=Path("notes/scene_clustering.md"))
     args = parser.parse_args()
 
@@ -104,12 +136,19 @@ def main() -> int:
         print(f"ERROR: no images in {args.images}", file=sys.stderr)
         return 1
 
-    hashes = np.stack([phash(p) for p in images])
-    dist = (hashes[:, None, :] != hashes[None, :, :]).sum(axis=2)
+    feature_fn = colorhist if args.method == "colorhist" else phash
+    features = [feature_fn(p) for p in images]
+    dist = pairwise_distance(features, args.method)
     times = [timestamp_s(p.name) for p in images]
 
+    if args.prior_bonus is None:
+        args.prior_bonus = 3.0 if args.method == "phash" else 0.05
+
     # Threshold scan for the report and the auto choice.
-    scan_range = range(1, 26)
+    if args.method == "phash":
+        scan_range = [float(t) for t in range(1, 26)]
+    else:
+        scan_range = [round(0.05 * t, 2) for t in range(1, 17)]  # 0.05 .. 0.80
     counts = [len(set(cluster(dist, times, t, args.time_slack, args.prior_bonus)))
               for t in scan_range]
 
@@ -117,9 +156,9 @@ def main() -> int:
         # Knee = largest second difference in the cluster-count curve.
         second_diff = [counts[i - 1] - 2 * counts[i] + counts[i + 1]
                        for i in range(1, len(counts) - 1)]
-        thr = list(scan_range)[1 + int(np.argmax(second_diff))]
+        thr = scan_range[1 + int(np.argmax(second_diff))]
     else:
-        thr = int(args.threshold)
+        thr = float(args.threshold)
 
     labels = cluster(dist, times, thr, args.time_slack, args.prior_bonus)
     n_clusters = len(set(labels))
@@ -135,8 +174,8 @@ def main() -> int:
     lines = [
         "# Scene clustering threshold scan",
         "",
-        f"Produced by `scripts/cluster_scenes.py` (pHash + single-linkage union-find,",
-        f"timestamp prior: +{args.prior_bonus} Hamming within {args.time_slack}s).",
+        f"Produced by `scripts/cluster_scenes.py` (method: {args.method}, single-linkage",
+        f"union-find, timestamp prior: +{args.prior_bonus} distance within {args.time_slack}s).",
         "",
         "| threshold | clusters |",
         "|-----------|----------|",
@@ -158,7 +197,7 @@ def main() -> int:
          "n_clusters": n_clusters,
          "scenes": scenes}, indent=2) + "\n")
 
-    print(f"{len(images)} images -> {n_clusters} scenes at Hamming<= {thr}")
+    print(f"{len(images)} images -> {n_clusters} scenes at {args.method} distance <= {thr}")
     print("cluster sizes:", sorted((len(v) for v in scenes.values()), reverse=True))
     print(f"scan: {args.scan_report}\nmap:  {args.out}")
 
