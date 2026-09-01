@@ -66,3 +66,20 @@ earphone case.**
   test holds 28 case instances across more white-case scenes.
 - 95 vs 113 instance imbalance is mild and does not explain the asymmetry;
   the appearance split does.
+
+## Addendum — live test on 8 never-seen evening photos (post-evaluation)
+
+Provenance: these frames were shot at 19:39 (different lighting from all
+training data) AFTER every metric above was frozen; nothing was tuned on
+them. `scripts/detect_folder.py` results: correct detections on 7/8.
+
+- **New failure mode: scale extrapolation.** The one complete miss is the
+  white charger in extreme close-up, filling well over half the frame. The
+  largest training box was 34% of frame — the model never saw this scale.
+  Distinct from every val/test failure (which are appearance-driven), and
+  the fix is capture, not architecture: a handful of very-close frames.
+- The known white-case/white-charger confusion reproduced exactly (a
+  charger_brick 0.57 duplicate on a correctly-detected 0.80 case), plus one
+  weak 0.28 false positive on a laptop corner in the dimmer lighting —
+  consistent with the variation report's prediction that lighting outside
+  the single training regime is the first thing to degrade.

@@ -111,7 +111,21 @@ ordering is a failed process gate, recorded in Known Gaps rather than hidden.
 `python scripts/train.py --data data/data.yaml --model yolo11n.pt --imgsz 640
 --batch 8 --epochs 100 --patience 25 --name final` — full resolved config as
 actually run: [runs/detect/final/resolved_config.json](runs/detect/final/resolved_config.json)
-(committed; key values: imgsz 640, batch 8, AMP on, seed 42, optimizer auto).
+(committed). The values that matter, quoted from that file:
+
+| Setting | Value |
+|---|---|
+| Base weights | yolo11n.pt (pretrained, 5.4 MB) |
+| Image size / batch / AMP | 640 / 8 / on |
+| LR schedule | lr0 0.01 → lrf 0.01 (linear), momentum 0.937, weight_decay 5e-4, 3 warmup epochs |
+| Optimizer | auto (AdamW selected by Ultralytics for this size) |
+| Augmentations | mosaic 1.0 (off for last 10 epochs), fliplr 0.5, HSV h/s/v 0.015/0.7/0.4, scale 0.5, translate 0.1, erasing 0.4 |
+| Seed / deterministic | 42 / true |
+
+All augmentation is **online** (per-batch in the dataloader), never baked
+into the dataset — so the split-before-augment requirement is satisfied by
+construction: validation and test images are never augmented, and no
+augmented copy of any image exists on disk to leak across splits.
 
 - **87 epochs** (early stop, best at 62), **11 m 14 s wall-clock**, peak
   ~1.4 GB VRAM of 4 GB.
@@ -250,6 +264,12 @@ python scripts/evaluate_onnx.py --onnx models/best_int8.onnx --split test
 
 # 7. Failure-analysis renders
 python scripts/render_predictions.py --onnx models/best.onnx --split val --out runs/render_val
+
+# 8. Tests — the Part B round-trip and IoU invariants, applied to this repo's own code
+python -m pytest tests/ -q
+
+# 9. Demo on any folder of new images
+python scripts/detect_folder.py --onnx models/best.onnx --source <folder> --out runs/demo
 ```
 
 ## Assumptions
