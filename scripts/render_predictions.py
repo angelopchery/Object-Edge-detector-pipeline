@@ -21,7 +21,8 @@ import onnxruntime as ort
 
 from common import boxes_to_original, decode_and_nms, list_images, preprocess
 
-CLASS_NAMES = {0: "charger_brick", 1: "earphone_case"}
+# Measured from the makesense export (coordinate match vs CSV): 0=EarphoneCase, 1=ChargingCase.
+CLASS_NAMES = {0: "earphone_case", 1: "charger_brick"}
 GT_COLOR = (0, 200, 0)      # green
 PRED_COLOR = (0, 0, 255)    # red
 MATCH_IOU = 0.5

@@ -30,7 +30,8 @@ from tqdm import tqdm
 
 from common import boxes_to_original, decode_and_nms, list_images, preprocess
 
-CLASS_NAMES = {0: "charger_brick", 1: "earphone_case"}
+# Measured from the makesense export (coordinate match vs CSV): 0=EarphoneCase, 1=ChargingCase.
+CLASS_NAMES = {0: "earphone_case", 1: "charger_brick"}
 IOU_THRESHOLDS = np.arange(0.50, 1.00, 0.05)  # 0.50, 0.55, ..., 0.95
 
 

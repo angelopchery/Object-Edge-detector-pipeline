@@ -1,10 +1,17 @@
 # Ultralytics dataset config.
 # Paths are relative to this file's directory.
+#
+# CLASS ORDER IS MEASURED, NOT ASSUMED: the makesense.ai export was
+# cross-checked by matching YOLO txt boxes against the CSV/VOC exports
+# coordinate-by-coordinate (208/208 boxes matched):
+#   YOLO id 0 = "EarphoneCase" -> earphone_case
+#   YOLO id 1 = "ChargingCase" -> charger_brick
+# The original scaffold had these flipped; fixed 2026-09-01.
 path: dataset
 train: images/train
 val: images/val
 test: images/test
 
 names:
-  0: charger_brick
-  1: earphone_case
+  0: earphone_case
+  1: charger_brick

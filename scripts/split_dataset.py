@@ -25,7 +25,8 @@ from pathlib import Path
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 SCENE_RE = re.compile(r"scene(\d+)", re.IGNORECASE)
-CLASS_NAMES = {0: "charger_brick", 1: "earphone_case"}
+# Measured from the makesense export (coordinate match vs CSV): 0=EarphoneCase, 1=ChargingCase.
+CLASS_NAMES = {0: "earphone_case", 1: "charger_brick"}
 
 
 def scene_id(path: Path) -> str:

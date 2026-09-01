@@ -16,8 +16,9 @@ import cv2
 
 from common import list_images
 
-CLASS_NAMES = {0: "charger_brick", 1: "earphone_case"}
-CLASS_COLORS = {0: (0, 200, 0), 1: (255, 128, 0)}  # BGR: green brick, blue-ish case
+# Measured from the makesense export (coordinate match vs CSV): 0=EarphoneCase, 1=ChargingCase.
+CLASS_NAMES = {0: "earphone_case", 1: "charger_brick"}
+CLASS_COLORS = {0: (0, 200, 0), 1: (255, 128, 0)}  # BGR: green case, blue-ish brick
 UNKNOWN_COLOR = (0, 0, 255)  # red for invalid class IDs — should never appear
 
 
