@@ -5,6 +5,7 @@ YoloData/
 # Dataset images are distributed via download_data.py, not git.
 # Label files and the split manifest ARE committed (annotation is auditable work).
 data/dataset/images/
+data/prepared/
 data/*.zip
 
 # Training outputs
