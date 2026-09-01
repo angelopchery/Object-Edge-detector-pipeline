@@ -90,3 +90,16 @@ why. Raw material for the README's Assumptions section and the live round.
   different-object frames — allowed by a scene split, not leakage. Verdict:
   metric is real, dataset is easy; README leads with mAP@0.5:0.95 and says
   why mAP@0.5 is not the discriminator.
+
+## 2026-09-01 — Phase 6 evaluation cross-check (val split)
+
+- Ultralytics (best.pt, rect val): mAP@0.5 0.988, mAP@0.5:0.95 0.755
+- evaluate_onnx.py (best.onnx, square 640 letterbox): 0.956 / 0.722
+- Gap 0.032 — inside the 0.01-0.05 "convention difference" band. Tested
+  NMS IoU 0.45 vs Ultralytics' 0.7: negligible (0.955/0.725), so the
+  drivers are (a) rect-batched val preprocessing vs fixed square 640
+  letterbox and (b) 101-point vs all-point AP interpolation, amplified by
+  the 21-image val set where one missed detection costs ~0.05 class-AP.
+- Verdict: proceed. FP32-vs-INT8 comparability is what matters and both
+  sides use evaluate_onnx.py; both toolchains' numbers are reported in the
+  README with this explanation.
