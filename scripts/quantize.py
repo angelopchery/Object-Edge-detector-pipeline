@@ -78,7 +78,9 @@ def main() -> int:
                   file=sys.stderr)
             return 1
 
+        import onnx
         import onnxruntime as ort
+        from onnx import version_converter
         from onnxruntime.quantization import CalibrationMethod, QuantFormat, QuantType, quantize_static
 
         images = list_images(args.calib_images)
@@ -92,10 +94,24 @@ def main() -> int:
         ).get_inputs()[0].name
         reader = TrainSplitCalibrationReader(calib_images, input_name, args.imgsz)
 
+        # Per-channel quantisation emits DequantizeLinear with an `axis`
+        # attribute, which only exists from opset 13 — quantising the
+        # opset-12 export directly produces an invalid graph (caught in
+        # Phase 7). Upgrade a COPY to opset 13 for the INT8 artifact; the
+        # opset-12 FP32 deliverable is untouched.
+        model = onnx.load(str(args.onnx))
+        opset = next(o.version for o in model.opset_import if o.domain in ("", "ai.onnx"))
+        quant_input = args.onnx
+        if opset < 13:
+            model13 = version_converter.convert_version(model, 13)
+            quant_input = args.onnx.with_name(args.onnx.stem + "_opset13_tmp.onnx")
+            onnx.save(model13, str(quant_input))
+            print(f"Upgraded opset {opset} -> 13 for quantisation (per-channel DQ needs axis)")
+
         out_path = args.out or args.onnx.with_name(args.onnx.stem + "_int8.onnx")
         print(f"Calibrating on {len(calib_images)} train-split images (seed {args.seed})...")
         quantize_static(
-            model_input=str(args.onnx),
+            model_input=str(quant_input),
             model_output=str(out_path),
             calibration_data_reader=reader,
             quant_format=QuantFormat.QDQ,
@@ -103,7 +119,17 @@ def main() -> int:
             weight_type=QuantType.QInt8,
             per_channel=True,
             calibrate_method=CalibrationMethod.MinMax,
+            # Conv only. Quantising everything collapsed the model to
+            # mAP 0.000: the head CONCATENATES box coords (0..640) and
+            # sigmoid scores (0..1) into one output tensor, and a single
+            # per-tensor scale for that concat (~640/255 = 2.5) rounds
+            # every class score to exactly 0. Convs carry ~all the FLOPs,
+            # so this keeps the speedup and leaves mixed-range head
+            # arithmetic in float. (Measured in Phase 7; see decisions.md.)
+            op_types_to_quantize=["Conv"],
         )
+        if quant_input != args.onnx:
+            quant_input.unlink()  # temp opset-13 copy
 
     print(f"\nFP32 model:      {args.onnx}  ({size_mb(args.onnx):.2f} MB)")
     print(f"Quantised model: {out_path}  ({size_mb(out_path):.2f} MB)")

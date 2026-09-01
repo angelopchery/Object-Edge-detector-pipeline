@@ -103,3 +103,20 @@ why. Raw material for the README's Assumptions section and the live round.
 - Verdict: proceed. FP32-vs-INT8 comparability is what matters and both
   sides use evaluate_onnx.py; both toolchains' numbers are reported in the
   README with this explanation.
+
+## 2026-09-01 — Phase 7 quantisation: a real C1-style collapse, diagnosed
+
+- First INT8 attempt produced an INVALID GRAPH: per-channel DequantizeLinear
+  needs the `axis` attribute (opset >= 13) but the export is pinned to
+  opset 12. Fix: upgrade a temp copy to opset 13 for quantisation only.
+- Second attempt loaded but scored mAP 0.000. Diagnosis by raw-output
+  comparison: box coords survived (7.6..635.7, matching FP32) but every
+  class score was exactly 0. Mechanism: the YOLO head CONCATENATES boxes
+  (range 0..640) and sigmoid scores (0..1) into one output tensor; a single
+  per-tensor scale for that tensor (~2.5) quantises every score to zero.
+  This is precisely ANSWERS.md C1 Cause 3, reproduced on my own model.
+- Fix: op_types_to_quantize=["Conv"] — quantise the compute-heavy convs,
+  leave mixed-range head arithmetic in float.
+- Measured result (evaluate_onnx.py, val, same code as FP32):
+  FP32 0.956/0.722 -> INT8 0.933/0.689 (drop 0.023 / 0.033), size
+  10.11 MB -> 3.00 MB (-70.3%). FP16 fallback not needed (drop << 0.15).
