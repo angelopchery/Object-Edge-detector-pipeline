@@ -16,7 +16,25 @@ import sys
 import time
 from pathlib import Path
 
+import yaml
 from ultralytics import YOLO
+
+
+def resolve_data_yaml(data_path: Path) -> Path:
+    """Write a copy of the dataset yaml with an ABSOLUTE `path:`.
+
+    Ultralytics resolves a relative `path:` against the global
+    settings.json datasets_dir — which on a shared machine can point at a
+    completely different project. Resolving against the yaml's own
+    location makes the repo portable regardless of global settings.
+    """
+    cfg = yaml.safe_load(data_path.read_text())
+    root = Path(cfg.get("path", "."))
+    if not root.is_absolute():
+        cfg["path"] = str((data_path.resolve().parent / root).resolve())
+    resolved = data_path.resolve().parent / (data_path.stem + ".resolved.yaml")
+    resolved.write_text(yaml.safe_dump(cfg, sort_keys=False))
+    return resolved
 
 
 def main() -> int:
@@ -39,7 +57,7 @@ def main() -> int:
 
     start = time.perf_counter()
     results = model.train(
-        data=args.data,
+        data=str(resolve_data_yaml(Path(args.data))),
         imgsz=args.imgsz,
         batch=args.batch,
         epochs=args.epochs,
@@ -50,7 +68,9 @@ def main() -> int:
         name=args.name,
         amp=not args.no_amp,
         resume=args.resume,
-        project="runs/detect",
+        # Absolute, so the global Ultralytics runs_dir setting cannot
+        # relocate or double the run directory.
+        project=str(Path("runs/detect").resolve()),
     )
     elapsed = time.perf_counter() - start
 
