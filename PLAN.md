@@ -107,6 +107,13 @@ an unannotated image would correctly be reported as an orphan.)
 
 **Gate.** Zero orphans, zero out-of-range coordinates, zero invalid class IDs, no zero-area boxes. Review anything flagged as suspiciously small.
 
+Then render every box and scroll through the output — the check that catches
+what the numeric one cannot (box on the wrong object, wrong class, loose box):
+
+```bash
+python scripts/render_labels.py --images data/prepared --labels data/labels_all --out runs/render_seed
+```
+
 Record per-class instance counts from the script output into `notes/capture_log.md`.
 
 **Commit:** `data: hand-labelled 40 seed images, verified`
@@ -170,8 +177,8 @@ Record wall-clock training time.
 The brief states plainly that near-perfect results on ~80 self-captured images will be read as evidence of a leaked split, not as strength.
 
 - **mAP@0.5 in roughly 0.70–0.90** → plausible for two distinctive rigid objects on a clean scene-aware split. Proceed.
-- **mAP@0.5 above 0.95** → stop and investigate before reporting anything. Check: are val images near-duplicates of train images despite the scene split (did I photograph the same arrangement across two scene numbers)? Did any pre-labelled image get copied into both folders? Run a perceptual-hash comparison of every val image against every train image and report the closest matches.
-- **mAP@0.5 below 0.55** → check class IDs are not flipped, check the labels render on the objects (contact sheet), check the model is not training from scratch instead of pretrained weights.
+- **mAP@0.5 above 0.95** → stop and investigate before reporting anything. Check: are val images near-duplicates of train images despite the scene split (did I photograph the same arrangement across two scene numbers)? Did any pre-labelled image get copied into both folders? Run `python scripts/check_leakage.py --dataset data/dataset` — it perceptual-hashes every val/test image against every train image and reports the closest pairs.
+- **mAP@0.5 below 0.55** → check class IDs are not flipped, check the labels render on the objects (`python scripts/render_labels.py --images data/dataset/images/train --labels data/dataset/labels/train --out runs/render_train`), check the model is not training from scratch instead of pretrained weights.
 
 Whatever happens here, write it down. A run that went wrong and was diagnosed is explicitly listed as something the graders want to see in the commit history.
 
@@ -267,7 +274,14 @@ Run it once. Do not tune anything afterwards. Report the number whatever it is, 
 
 ## 13. Part A4 — failure analysis  `[ ]`
 
-Pick the three worst validation images by per-image loss or by manual inspection of predictions. For each, write:
+Pick the three worst validation images by per-image loss or by manual inspection of predictions:
+
+```bash
+python scripts/render_predictions.py --onnx models/best.onnx --split val --out runs/render_val
+```
+
+Output filenames are prefixed `errNN_` (missed GT + false positives per image),
+so the worst images sort to the top. For each of the three worst, write:
 
 - What the model predicted (class, box, confidence).
 - What it should have predicted.
