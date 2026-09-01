@@ -65,3 +65,17 @@ why. Raw material for the README's Assumptions section and the live round.
   https://download.pytorch.org/whl/cu121 --force-reinstall --no-deps`.
   Lesson recorded: on this stack, verify `torch.cuda.is_available()` after
   ANY pip operation.
+
+## 2026-09-01 — Phase 0 batch answered
+
+- **Class semantics confirmed**: 0=earphone_case (green in makesense),
+  1=charger_brick (red). Correction to the inferred guide: FOUR physical
+  objects exist — two chargers (one black, one white) and two earphone
+  cases — never more than one unit of a class per frame. Intra-class
+  appearance variation is real (black vs white charger); generalisation
+  beyond these four units is still unmeasured.
+- **No supplementary capture**: proceeding with the 150 images. The narrow
+  single-lighting-regime finding (brightness std 21.8, range 83-170)
+  becomes the lead Known Gaps item, quantified.
+- **Guide rules confirmed**: boxes exclude cable and shadow; no unlabelled
+  background instances anywhere; the case never appears open.

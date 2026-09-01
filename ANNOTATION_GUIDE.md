@@ -12,8 +12,10 @@
 
 | ID | makesense name | Meaning |
 |----|----------------|---------|
-| 0 | `EarphoneCase` | earphone case |
-| 1 | `ChargingCase` | charger brick (wall adapter) — **pending visual confirmation, see notes/class_check/** |
+| 0 | `EarphoneCase` | earphone case — **2 distinct physical units** in the dataset (green boxes in makesense) |
+| 1 | `ChargingCase` | charger brick (wall adapter) — **2 distinct physical units**, one black and one white (red boxes in makesense) |
+
+Confirmed by the annotator 2026-09-01 against the crops in `notes/class_check/`.
 
 The ID→name mapping was **measured** by matching the YOLO txt export against
 the CSV export coordinate-by-coordinate (208/208 boxes agree). Do not trust
@@ -35,35 +37,34 @@ objects touching or partially occluding each other; both objects are always
 labelled in those frames. No frame shows an object skipped for being
 partially hidden.
 
-### 3. Exactly one instance of each class per frame `[inferred]`
+### 3. At most one instance of each class per frame `[inferred, corrected by annotator]`
 Evidence: 0 images contain two boxes of the same class, across all 150.
-Interpretation: **one physical charger brick and one physical earphone case
-were photographed throughout.** Consequence, stated honestly in the README:
-the model learns these two specific units; validation figures overstate
-generalisation to other units of the same classes.
+Original inference ("one physical unit per class") was **wrong**: the
+annotator confirms **four physical objects** — two charger bricks (one
+black, one white) and two earphone cases — with never more than one unit
+of a class in frame. Consequence for the README: intra-class appearance
+variation exists (notably black vs white charger), but generalisation
+beyond these four specific units is still unmeasured.
 
-### 4. Box tightness `[inferred, needs annotator confirmation]`
-Boxes appear tight to the object silhouette (aspect ratios track the
-objects' physical proportions: median w/h 1.39 for the case, 1.15 for the
-brick, varying with pose 0.6–2.5). Whether the charger's cable/prongs or
-cast shadows were included cannot be determined from coordinates alone —
-**annotator to confirm**: TODO.
+### 4. Box tightness — body only, no cable, no shadow `[confirmed 2026-09-01]`
+Boxes are tight to the object silhouette (aspect ratios track the objects'
+physical proportions: median w/h 1.39 for the case, 1.15 for the brick,
+varying with pose 0.6–2.5). Annotator confirms: charger boxes cover the
+brick body/prongs only — cables and cast shadows excluded.
 
 ### 5. Minimum instance size — none needed `[inferred]`
 Evidence: smallest box is 1.69% of frame (~85×110 px at 1280 long edge).
 No tiny/distant instances exist, so no minimum-size rule was ever exercised.
 The 0.1%-of-frame suspicion threshold in `verify_labels.py` never fired.
 
-### 6. Out-of-focus / background instances — no evidence either way
-No labelled box is implausibly small or peripheral, and there is no record
-of skipped background instances. If any frame contains an unlabelled
-background instance, it is an unknown — **annotator to confirm whether any
-frames contained a second, unlabelled unit in the background**: TODO.
+### 6. Background instances — none exist `[confirmed 2026-09-01]`
+Annotator confirms no frame contains a second charger or case visible in
+the background that was left unlabelled. Every visible instance is boxed.
 
-### 7. Open earphone case — one box or two?
-Not determinable from coordinates. **Annotator to confirm** whether any
-frames show the case open, and if so whether it was boxed as one object:
-TODO.
+### 7. Open earphone case — never occurs `[confirmed 2026-09-01]`
+Annotator confirms the case is closed in every frame, so the
+one-box-or-two question never arose. If open-case frames are ever added,
+the rule must be decided before labelling them.
 
 ## Process record
 
