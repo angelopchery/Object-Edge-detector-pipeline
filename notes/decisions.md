@@ -132,3 +132,12 @@ why. Raw material for the README's Assumptions section and the live round.
   saving. The size win (-70%) is real; the latency win is not, on this
   hardware. Reported as measured — connects directly to ANSWERS.md D5:
   ORT-on-x86 numbers bound nothing about the deployment accelerator.
+
+## 2026-09-01 — Phase 8 held-out test (run exactly once, no tuning after)
+
+- FP32: mAP@0.5 0.849, mAP@0.5:0.95 0.659 (earphone_case 0.779/0.618,
+  charger_brick 0.920/0.700)
+- INT8: mAP@0.5 0.793, mAP@0.5:0.95 0.609
+- Val -> test gap (FP32): 0.956 -> 0.849 mAP@0.5 (-0.107) and
+  0.722 -> 0.659 (-0.063). The val figures were optimistic by roughly
+  this much; earphone_case degrades most. Reported verbatim.
