@@ -120,3 +120,15 @@ why. Raw material for the README's Assumptions section and the live round.
 - Measured result (evaluate_onnx.py, val, same code as FP32):
   FP32 0.956/0.722 -> INT8 0.933/0.689 (drop 0.023 / 0.033), size
   10.11 MB -> 3.00 MB (-70.3%). FP16 fallback not needed (drop << 0.15).
+
+## 2026-09-01 — Phase 7 benchmark: INT8 measured SLOWER on this CPU
+
+- CPU (i5-12450H, CPUExecutionProvider, ORT default threads, batch 1,
+  20 warmup + 200 iters, on mains, no other load):
+  FP32 mean 29.80 ms (p95 31.53) vs INT8 mean 64.40 ms (p95 70.47) —
+  0.46x "speedup", i.e. 2.2x slower.
+- Explanation: Conv-only QDQ inserts Quantize/Dequantize pairs around
+  every conv; on this x86 CPU the Q/DQ overhead exceeds the int8 compute
+  saving. The size win (-70%) is real; the latency win is not, on this
+  hardware. Reported as measured — connects directly to ANSWERS.md D5:
+  ORT-on-x86 numbers bound nothing about the deployment accelerator.
