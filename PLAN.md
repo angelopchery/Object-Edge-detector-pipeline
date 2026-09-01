@@ -60,7 +60,7 @@ Established by audit, not assumption. Carry these facts forward; do not re-deriv
 
 ---
 
-## Phase 0 — One-time decision batch  `[~]`  _(batch prepared, awaiting answers)_
+## Phase 0 — One-time decision batch  `[x]`  _(answered; item 4 hard-images proposed post-Phase 9)_
 
 Everything I need to answer, asked once, up front. Claude Code prepares the material, I answer in a single message, and then autonomy runs to Phase 11.
 
@@ -162,7 +162,7 @@ Compute and report:
 
 ---
 
-## Phase 3 — Scene derivation, split, and leakage audit  `[~]`  _(3a done: colorhist, 40 clusters; 3b/3c after Phase 0 answers)_
+## Phase 3 — Scene derivation, split, and leakage audit  `[x]`  _(40 clusters, 79/21/50, two-metric audit clean)_
 
 The most important phase. Filename-based scenes do not exist and timestamp clustering cannot separate an 87-image continuous burst. Derive scene identity visually, then verify the split empirically.
 
@@ -222,7 +222,7 @@ Do not resample to fix class imbalance. Record it and connect it to the failure 
 
 ---
 
-## Phase 4 — Training  `[ ]`
+## Phase 4 — Training  `[x]`  _(87 epochs, 11m14s, val mAP@0.5:0.95 0.755; >0.97 tripwire investigated)_
 
 ```bash
 python scripts/train.py --data data/data.yaml --model yolo11n.pt --imgsz 640 --batch 8 --epochs 100 --patience 25 --name final
@@ -246,7 +246,7 @@ A run that went wrong and was diagnosed is explicitly something the graders want
 
 ---
 
-## Phase 5 — ONNX export and parity  `[ ]`
+## Phase 5 — ONNX export and parity  `[x]`  _(max abs diff 8.85e-04, boxes 6.1e-05 px)_
 
 ```bash
 python scripts/export_onnx.py --weights runs/detect/final/weights/best.pt --imgsz 640 --opset 12 --out models
@@ -265,7 +265,7 @@ The brief asks *how* parity was confirmed. Report actual numbers: max abs diff a
 
 ---
 
-## Phase 6 — Evaluation cross-check  `[ ]`
+## Phase 6 — Evaluation cross-check  `[x]`  _(gap 0.032, conventions documented)_
 
 Before quantising anything. `evaluate_onnx.py` hand-rolls AP; if it disagrees with Ultralytics, every downstream comparison is meaningless.
 
@@ -284,7 +284,7 @@ yolo val model=runs/detect/final/weights/best.pt data=data/data.yaml split=val
 
 ---
 
-## Phase 7 — Quantisation and benchmark  `[ ]`
+## Phase 7 — Quantisation and benchmark  `[x]`  _(two failures diagnosed; drop 0.033; int8 2.2x slower on cpu)_
 
 ```bash
 python scripts/quantize.py --onnx models/best.onnx --calib-images data/dataset/images/train --num-calib 100
@@ -308,7 +308,7 @@ If accuracy dropped, quantify it as a number.
 
 ---
 
-## Phase 8 — Held-out test, run exactly once  `[ ]`
+## Phase 8 — Held-out test, run exactly once  `[x]`  _(fp32 0.849/0.659, int8 0.793/0.609)_
 
 ```bash
 python scripts/evaluate_onnx.py --onnx models/best.onnx --split test
@@ -322,7 +322,7 @@ Report it beside the validation number and comment on the gap. **The val-to-test
 
 ---
 
-## Phase 9 — Failure analysis (A4)  `[ ]`
+## Phase 9 — Failure analysis (A4)  `[x]`  _(white-case failure locus, rendered evidence committed)_
 
 ```bash
 python scripts/render_predictions.py --onnx models/best.onnx --split val --out runs/render_val
@@ -343,7 +343,7 @@ Hypotheses must connect to measured facts from this repo, not generic causes. Av
 
 ---
 
-## Phase 10 — Parts C and D  `[ ]`
+## Phase 10 — Parts C and D  `[x]`  _(committed; C1 grounded in the live Phase 7 collapse)_
 
 No data dependency. Draft during Phase 4 training rather than waiting.
 
@@ -365,7 +365,7 @@ No data dependency. Draft during Phase 4 training rather than waiting.
 
 ---
 
-## Phase 11 — README  `[ ]`
+## Phase 11 — README  `[x]`  _(all measured; recording link pending)_
 
 Every `TODO: measure` replaced with a real value, each with its producing command named.
 
